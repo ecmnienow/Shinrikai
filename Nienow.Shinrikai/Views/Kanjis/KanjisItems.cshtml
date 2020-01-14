@@ -1,0 +1,28 @@
+﻿@model List<Nienow.Shinrikai.Kanji.Model.GKanjiAnswer>
+@{
+    Layout = null;
+}
+
+@foreach (var kanji in Model)
+{
+    <div class="row @(kanji.Wrong || kanji.Answers.Count > 3 ? "has-error" : "")">
+        <div class="col-sm-2 control-label"><label>@kanji.Kanji</label></div>
+        @if (kanji.Answers.Count == 1)
+        {
+            <div class="col-sm-10"><input class="form-control" type="text" value="@kanji.Answers[0]"></div>
+        }
+        @if (kanji.Answers.Count == 2)
+        {
+            <div class="col-sm-5"><input class="form-control" type="text" value="@kanji.Answers[0]"></div>
+            <div class="col-sm-5"><input class="form-control" type="text" value="@kanji.Answers[1]"></div>
+        }
+        @if (kanji.Answers.Count == 3)
+        {
+            <div class="col-sm-10 no-padding">
+                <div class="col-sm-4"><input class="form-control" type="text" value="@kanji.Answers[0]"></div>
+                <div class="col-sm-4"><input class="form-control" type="text" value="@kanji.Answers[1]"></div>
+                <div class="col-sm-4"><input class="form-control" type="text" value="@kanji.Answers[2]"></div>
+            </div>
+        }
+    </div>
+}

@@ -1,0 +1,22 @@
+﻿<!-- Modal -->
+<div id="furiganaDialog" class="modal" role="dialog">
+    <div class="modal-dialog modal-sm">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" onclick="$('#furiganaDialog').remove()">&times;</button>
+                <h4 class="modal-title">Inserir furigana</h4>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="txtFurigana" class="control-label">Furigana</label>
+                    <input id="txtFurigana" type="text" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" onclick="addFurigana($('#txtFurigana').val());">OK</button>
+                <button type="button" class="btn btn-default" onclick="$('#furiganaDialog').remove();">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>

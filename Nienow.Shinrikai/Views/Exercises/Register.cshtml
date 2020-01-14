@@ -1,0 +1,183 @@
+﻿@using Nienow.Shinrikai.Core;
+@model Nienow.Shinrikai.Exercises.Model.TExercise
+@{
+    ViewBag.Title = "Cadastro de Exercícios";
+}
+
+@section scripts{
+    <script type="text/javascript">
+        var _exerciseId = @Model.ID;
+        var _grammarId = @Model.GrammarId;
+        var _referrer = "@Request.UrlReferrer";
+        var _textId = @Model.TextId;
+        
+        var _url_AddExercise = "@Url.Action("AddExercise", "Exercises")";
+    </script>
+    
+    <script type="text/javascript">
+        function Register() {
+            if (!Validate())
+                return;
+
+            var level = $('#rbtLevel input[name="levelJLPT"]:checked').val();
+            var question = $("#txtQuestion").val();
+            var checked = $('.option input[type="radio"]:checked').val();
+            var option1 = $('.option1 input[type="text"]').val();
+            var option2 = $('.option2 input[type="text"]').val();
+            var option3 = $('.option3 input[type="text"]').val();
+            var option4 = $('.option4 input[type="text"]').val();
+            var jlpt = $('#rbtLevel input[type="radio"]:checked').val();
+
+            $.ajax({
+                type: "POST",
+                url: _url_AddExercise,
+                traditional: true,
+                data: {
+                    id: _exerciseId,
+                    grammarId: _grammarId,
+                    textId:_textId,
+                    level: level,
+                    question: question,
+                    right: checked,
+                    option1: option1,
+                    option2: option2,
+                    option3: option3,
+                    option4: option4,
+                    jlpt: jlpt
+                }
+            })
+            .done(function (data) {
+                if (data == true) {
+                    InformationDialog("Exercício cadastrado com sucesso!", null, function () {
+                        if(_referrer)
+                            window.location = _referrer;
+                        else
+                            window.location = window._url_Home; 
+                    });
+                }
+                else
+                    AlertDialog("Não foi possível cadastrar o novo exercício!");
+            });
+        }
+
+        function Validate() {
+            var txtQuestion = $("#txtQuestion").val();
+
+            var rbtChecked = $('.option input[type="radio"]:checked').length > 0;
+            
+            var txtOption1 = $('.option1 input[type="text"]').val();
+            var txtOption2 = $('.option2 input[type="text"]').val();
+            var txtOption3 = $('.option3 input[type="text"]').val();
+            var txtOption4 = $('.option4 input[type="text"]').val();
+
+            if (!txtQuestion || txtQuestion.length == 0) {
+                $("#txtQuestion").parent().parent().addClass("has-error");
+                AlertDialog("É obrigatório que informe uma questão para o exercício a ser cadastrado.");
+                return false;
+            }
+            
+            if (!txtOption1 || txtOption1.length == 0 ||
+                !txtOption2 || txtOption2.length == 0 ||
+                !txtOption3 || txtOption3.length == 0 ||
+                !txtOption4 || txtOption4.length == 0) {
+                $(".option").parent().addClass("has-error");
+                AlertDialog("Todas as opções de respostas devem ser preenxidas.");
+                return false;
+            }
+
+            if (!rbtChecked || rbtChecked !== true) {
+                AlertDialog("Nenhuma resposta foi marcada como correta.");
+                return false;
+            }
+
+            return true;
+        }
+    </script>
+
+    <style type="text/css">
+        .exercise.container {
+            margin-bottom: 30px;
+        }
+
+        .exercise .center {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .exercise > * {
+            max-width: 600px;
+        }
+
+        .exercise .control-label {
+            text-align: left;
+        }
+
+        .exercise textarea {
+            min-width: 100%;
+            max-width: 100%;
+        }
+
+        .exercise .option {
+            margin-bottom: 10px;
+        }
+
+            .exercise .option:last-child {
+                margin-bottom: 20px;
+            }
+
+            .exercise .option input[type="text"] {
+                display: inline-block;
+                width: calc(100% - 35px);
+            }
+    </style>
+}
+
+<div class="exercise container"> 
+    <h2 class="center">Cadastro de Exercícios</h2>
+
+    <form class="form-horizontal center" role="form">
+        <div>
+            <label class="control-label leftOverflow">Nível aconselhado</label>
+            <div id="rbtLevel" class="form-horizontal radio">
+                <label><input type="radio" name="levelJLPT" value="None" @(Model.Level == EJLPT.None ? "checked='checked'" : "")>Nenhum</label>
+                <label><input type="radio" name="levelJLPT" value="N5" @(Model.Level == EJLPT.N5 ? "checked='checked'" : "")>N5</label>
+                <label><input type="radio" name="levelJLPT" value="N4" @(Model.Level == EJLPT.N4 ? "checked='checked'" : "")>N4</label>
+                <label><input type="radio" name="levelJLPT" value="N3" @(Model.Level == EJLPT.N3 ? "checked='checked'" : "")>N3</label>
+                <label><input type="radio" name="levelJLPT" value="N2" @(Model.Level == EJLPT.N2 ? "checked='checked'" : "")>N2</label>
+                <label><input type="radio" name="levelJLPT" value="N1" @(Model.Level == EJLPT.N1 ? "checked='checked'" : "")>N1</label>
+            </div>
+        </div>
+        <br/>
+        <div>
+            <div class="control-label"><label>Questão</label></div>
+            <div><textarea id="txtQuestion" class="form-control">@(Model.ID != 0 ? Model.Question : "")</textarea></div>
+        </div>
+        <br/>
+        <div>
+            <div class="control-label"><label>Possíveis respostas</label></div>
+            <div class="option option1">
+                <label class="control-label">a) <input type="radio" name="optionsRadios" value="1" @(Model.RightAnswer == 1 ? "checked='checked'" : "")/></label>
+                <input class="form-control" type="text" value="@(Model.ID != 0 ? Model.Option1 : "")">
+            </div>
+            <div class="option option2">
+                <label class="control-label">b) <input type="radio" name="optionsRadios" value="2" @(Model.RightAnswer == 2 ? "checked='checked'" : "")/></label>
+                <input class="form-control" type="text" value="@(Model.ID != 0 ? Model.Option2 : "")">
+            </div>
+            <div class="option option3">
+                <label class="control-label">c) <input type="radio" name="optionsRadios" value="3" @(Model.RightAnswer == 3 ? "checked='checked'" : "")/></label>
+                <input class="form-control" type="text" value="@(Model.ID != 0 ? Model.Option3 : "")">
+            </div>
+            <div class="option option4">
+                <label class="control-label">d) <input type="radio" name="optionsRadios" value="4" @(Model.RightAnswer == 4 ? "checked='checked'" : "")/></label>
+                <input class="form-control" type="text" value="@(Model.ID != 0 ? Model.Option4 : "")">
+            </div>
+        </div>
+    
+        <div style="text-align: right;">
+            <div class="clearfix" style="display: inline-block;">
+                <button type="button" class="btn btn-primary" onclick="Register()">@(Model.ID != 0 ? "Alterar" : "Cadastrar")</button>
+                <button type="button" class="btn btn-default" onclick="Cancel()">Cancelar</button>
+            </div>
+        </div>
+    </form>
+</div>
