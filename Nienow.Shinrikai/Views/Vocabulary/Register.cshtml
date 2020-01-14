@@ -1,0 +1,544 @@
+﻿@model Nienow.Shinrikai.Models.Vocabulary.MVocabulary
+@{
+    ViewBag.Title = "Cadastro de Vocabulário";
+}
+
+@section scripts {
+    <script type="text/javascript">
+        var _referrer = "@Request.UrlReferrer";
+        var _wordId = @(Model.Word != null ? Model.Word.ID : 0);
+        
+        var _url_AddWord = "@Url.Action("AddWord", "Vocabulary")";
+        var _url_GetWord = "@Url.Action("GetWord", "Vocabulary")";
+    </script>
+
+    <script type="text/javascript">
+        $(function () {
+            //CleanUI();
+            
+            var loadImage1 = function () { $("#img1Name").val($("#img1").val()); };
+            var loadImage2 = function () { $("#img2Name").val($("#img2").val()); };
+            var loadImage3 = function () { $("#img3Name").val($("#img3").val()); };
+            var loadAudio1 = function () { $("#audio1Name").val($("#audio1").val()); };
+            var loadAudio2 = function () { $("#audio2Name").val($("#audio2").val()); };
+            var loadAudio3 = function () { $("#audio3Name").val($("#audio3").val()); };
+
+            //Image 1
+            if (window.navigator.userAgent.indexOf("MSIE ") > 0) {
+                // IE suspends timeouts until after the file dialog closes
+                $("#img1").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#img1").val().length > 0)
+                            loadImage1();
+                    }, 0);
+                });
+
+                $("#img2").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#img2").val().length > 0)
+                            loadImage2();
+                    }, 0);
+                });
+
+                $("#img3").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#img3").val().length > 0)
+                            loadImage3();
+                    }, 0);
+                });
+
+                $("#audio1").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#audio1").val().length > 0)
+                            loadAudio1();
+                    }, 0);
+                });
+
+                $("#audio2").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#audio2").val().length > 0)
+                            loadAudio2();
+                    }, 0);
+                });
+
+                $("#audio3").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#audio3").val().length > 0)
+                            loadAudio3();
+                    }, 0);
+                });
+            }
+            else {
+                // All other browsers behave
+                $("#img1").change(loadImage1);
+                $("#img2").change(loadImage2);
+                $("#img3").change(loadImage3);
+                $("#audio1").change(loadAudio1);
+                $("#audio2").change(loadAudio2);
+                $("#audio3").change(loadAudio3);
+            }
+            
+            var subjects = [
+                @foreach(var subject in Model.Subjects)
+                {
+                    <text>{ value: "@Html.Raw(subject.Value)", id: @subject.Key },</text>
+                }
+            ];
+
+            $("#txtSubject1, #txtSubject2, #txtSubject3").autocomplete({
+                source: subjects,
+                select: function(event, ui) {
+                    if (ui.item)
+                        $(this).parent().find("input[type='hidden']").val(ui.item.id);
+                    else
+                        $(this).parent().find("input[type='hidden']").val("");
+                }
+            });
+        });
+
+        function Cancel() {
+            window.location = window._url_Home;
+        }
+
+        function CleanUI()
+        {
+            $("#txtKana").val("");
+            $("#txtRomaji").val("");
+            
+            //Forma 1
+            $("#txtKanji1").val("");
+            $("#txtSubject1").val("");
+            $("#txtSubjectID1").val("");
+            $("#txtTranslation1").val("");
+            $("#img1Name").val("");
+            $('#img1').wrap('<form>').parent('form').trigger('reset');
+            $('#img1').unwrap();
+            $("#audio1Name").val("");
+            $('#audio1').wrap('<form>').parent('form').trigger('reset');
+            $('#audio1').unwrap();
+
+            //Forma 2
+            $("#txtKanji2").val("");
+            $("#txtSubject2").val("");
+            $("#txtSubjectID2").val("");
+            $("#txtTranslation2").val("");
+            $("#img2Name").val("");
+            $('#img2').wrap('<form>').parent('form').trigger('reset');
+            $('#img2').unwrap();
+            $("#audio2Name").val("");
+            $('#audio2').wrap('<form>').parent('form').trigger('reset');
+            $('#audio2').unwrap();
+
+            //Forma 3
+            $("#txtKanji3").val("");
+            $("#txtSubject3").val("");
+            $("#txtSubjectID3").val("");
+            $("#txtTranslation3").val("");
+            $("#img3Name").val("");
+            $('#img3').wrap('<form>').parent('form').trigger('reset');
+            $('#img3').unwrap();
+            $("#audio3Name").val("");
+            $('#audio3').wrap('<form>').parent('form').trigger('reset');
+            $('#audio3').unwrap();
+        }
+
+        function Register() {
+            if (!Validate())
+                return;
+
+            var formData = new FormData();
+            formData.append("ID", _wordId);
+            formData.append("Kana", $("#txtKana").val());
+            formData.append("Romaji", $("#txtRomaji").val());
+
+            //Forma 1
+            formData.append("KanjiWord1", $("#txtKanji1").val());
+            formData.append("SubjectID1", $("#txtSubjectID1").val());
+            formData.append("Word1", $("#txtTranslation1").val());
+
+            //Forma 2
+            formData.append("kanjiWord2", $("#txtKanji2").val());
+            formData.append("SubjectID2", $("#txtSubjectID2").val());
+            formData.append("Word2", $("#txtTranslation2").val());
+
+            //Forma 3
+            formData.append("KanjiWord3", $("#txtKanji3").val());
+            formData.append("SubjectID3", $("#txtSubjectID3").val());
+            formData.append("Word3", $("#txtTranslation3").val());
+
+            var img1 = $('#img1')[0].files[0];
+            if(img1) formData.append("file1", img1);
+            
+            var img2 = $('#img2')[0].files[0];
+            if(img2) formData.append("file2", img2);
+            
+            var img3 = $('#img3')[0].files[0];
+            if(img3) formData.append("file3", img3);
+            
+            var audio1 = $('#audio1')[0].files[0];
+            if(audio1) formData.append("file4", audio1);
+            
+            var audio2 = $('#audio2')[0].files[0];
+            if(audio2) formData.append("file5", audio2);
+            
+            var audio3 = $('#audio3')[0].files[0];
+            if(audio3) formData.append("file6", audio3);
+
+            $.ajax({
+                type: "POST",
+                url: _url_AddWord,
+                data: formData,
+                processData: false,
+                contentType: false
+            })
+            .done(function (data) {
+                if (data == true) {
+                    if(_wordId == 0) {
+                        InformationDialog("Palavra cadastrado com sucesso!", null, function () {
+                            location.reload();
+                        });
+                    }
+                    else {
+                        InformationDialog("Palavra alterada com sucesso!", null, function () {
+                            if(_referrer)
+                                window.location = _referrer;
+                            else
+                                window.location = window._url_Home; 
+                        });
+                    }
+                }
+                else
+                    if(_wordId == 0)
+                        ErrorDialog("Não foi possível cadastrar a nova palavra!");
+                    else
+                        ErrorDialog("Não foi possível alterar a palavra!");
+            });
+        }
+
+        function SearchWord() {
+            var word = $("#txtKana").val();
+            
+            if (!word || word.length == 0) {
+                $("#txtKana").parent().parent().parent().addClass("has-error");
+                return;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: _url_GetWord,
+                data: {
+                    search: word
+                }
+            })
+            .done(function (data) {
+                if (typeof data === "undefined" || data === null || !data)
+                    AlertDialog("Palavra não encontrada!");
+                else {
+                    //$("#txtKana").prop("disabled", true);
+                    $("#btnRecord").text("Alterar");
+                    _wordId = data.ID;
+
+                    $("#txtKana").val(data.Kana);
+                    $("#txtRomaji").val(data.Romaji);
+
+                    //Forma 1
+                    $("#txtKanji1").val(data.KanjiWord1);
+                    $("#txtSubject1").val(data.Subject1);
+                    $("#txtSubjectID1").val(data.SubjectID1);
+                    $("#txtTranslation1").val(data.Word1);
+                    $("#img1Name").val(data.HasImage1 ? "[Imagem]" : "");
+                    $("#audio1Name").val(data.HasAudio1 ? "[Audio]" : "");
+                    
+                    //Forma 2
+                    $("#txtKanji2").val(data.KanjiWord2);
+                    $("#txtSubject2").val(data.Subject2);
+                    $("#txtSubjectID2").val(data.SubjectID2);
+                    $("#txtTranslation2").val(data.Word2);
+                    $("#img2Name").val(data.HasImage2 ? "[Imagem]" : "");
+                    $("#audio2Name").val(data.HasAudio2 ? "[Audio]" : "");
+                    
+                    //Forma 3
+                    $("#txtKanji3").val(data.KanjiWord3);
+                    $("#txtSubject3").val(data.Subject3);
+                    $("#txtSubjectID3").val(data.SubjectID3);
+                    $("#txtTranslation3").val(data.Word3);
+                    $("#img3Name").val(data.HasImage3 ? "[Imagem]" : "");
+                    $("#audio3Name").val(data.HasAudio3 ? "[Audio]" : "");
+                    
+                    if (data.JLPT)
+                        $('#rbtLevel input[value="' + data.JLPT.toLowerCase() + '"]').prop("checked", true);
+                    else
+                        $('#rbtLevel input[value="none"]').prop("checked", true);
+                    
+                    if(data.HasImage === true)
+                        $("#txtFileName").val("[Imagem]");
+                }
+            });
+        }
+
+        function Validate() {
+            var kana = $("#txtKana").val();
+            var romaji = $("#txtRomaji").val();
+
+            //Forma 1
+            var subject1 = $("#txtSubject1").val();
+            var subjectID1 = $("#txtSubjectID1").val() == 0 ? "" : $("#txtSubjectID1").val();
+            var translation1 = $("#txtTranslation1").val();
+
+            //Forma 2
+            var kanji2 = $("#txtKanji2").val();
+            var subject2 = $("#txtSubject2").val();
+            var subjectID2 = $("#txtSubjectID2").val() == 0 ? "" : $("#txtSubjectID2").val();
+            var translation2 = $("#txtTranslation2").val();
+            var img2Name = $("#img2Name").val();
+            var audio2Name = $("#audio2Name").val();
+
+            //Forma 3
+            var kanji3 = $("#txtKanji3").val();
+            var subject3 = $("#txtSubject3").val();
+            var subjectID3 = $("#txtSubjectID3").val() == 0 ? "" : $("#txtSubjectID3").val();
+            var translation3 = $("#txtTranslation3").val();
+            var img3Name = $("#img3Name").val();
+            var audio3Name = $("#audio3Name").val();
+
+            var ok = true;
+
+            if (!kana) { $("#txtKana").parent().parent().addClass("has-error"); ok = false; }
+            if (!romaji) { $("#txtRomaji").parent().parent().addClass("has-error"); ok = false; }
+
+            if (!subject1 || !subjectID1) { $("#txtSubject1").parent().parent().addClass("has-error"); ok = false; }
+            if (!translation1) { $("#txtTranslation1").parent().parent().addClass("has-error"); ok = false; }
+
+            if ((kanji2 || subject2 || subjectID2 || translation2 || img2Name || audio2Name) && !(subject2 && subjectID2 && translation2)) {
+                if (!subject2 || !subjectID2) { $("#txtSubject2").parent().parent().addClass("has-error"); ok = false; }
+                if (!translation2) { $("#txtTranslation2").parent().parent().addClass("has-error"); ok = false; }
+            }
+            
+            if ((kanji3 || subject3 || subjectID3 || translation3 || img3Name || audio3Name) && !(subject3 && subjectID3 && translation3)) {
+                if (!subject3 || !subjectID3) { $("#txtSubject3").parent().parent().addClass("has-error"); ok = false; }
+                if (!translation3) { $("#txtTranslation3").parent().parent().addClass("has-error"); ok = false; }
+            }
+            
+            return ok;
+        }
+    </script>
+
+    <style type="text/css">
+        .grammar.container {
+            margin-bottom: 30px;
+        }
+
+        .grammar .center {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .grammar > * {
+            max-width: 600px;
+        }
+
+        .grammar .clearfix {
+            margin-top: 5px;
+            padding-right: 5px;
+            padding-left: 5px;
+        }
+
+        .grammar .col-sm-2, .grammar .col-sm-4, .grammar .col-sm-5, .grammar .col-sm-10 {
+            padding-right: 5px;
+            padding-left: 5px;
+        }
+
+        .grammar .no-padding {
+            padding: 0;
+        }
+
+        .grammar input {
+            margin-bottom: 4px;
+        }
+
+        .grammar .pager {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        .grammar .radio label:nth-child(3) {
+            margin-left: 10px !important;
+        }
+
+        .grammar .dropdown .dropdown-toggle {
+            width: calc(83.3333% - 10px);
+            margin-left: 5px;   
+        }   
+
+        .grammar .form-horizontal > div:not(:first-child) {
+            padding-top: 5px;
+        }
+
+        .grammar .form-horizontal .thumbnail .control-label{
+            text-align:left;
+        }
+
+        .ui-autocomplete {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+}
+
+<div class="grammar container"> 
+    <h2 class="center">Cadastro de Vocabulário</h2>
+
+    <form class="form-horizontal center" role="form">
+        <div>
+            <div class="col-sm-2 control-label"><label>Kana</label></div>
+            <div class="col-sm-10" style="margin-bottom: 8px;">
+                <div class="input-group">
+                    <input id="txtKana" class="form-control" type="text" value="@(Model.Word != null ? Model.Word.Kana : "")" />
+                    <span class="input-group-btn" onclick="SearchWord()">
+                        <label class="btn btn-info"><span class="glyphicon glyphicon-search"></span> <span>Procurar</span></label>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="col-sm-2 control-label"><label>Romaji</label></div>
+            <div class="col-sm-10"><input id="txtRomaji" class="form-control" type="text" value="@(Model.Word != null ? Model.Word.Romaji : "")"></div>
+        </div>
+    
+        <div>
+            <div class="col-sm-6 col-md-4" style="padding: 0 4px; margin-top: 5px;">
+                <div class="thumbnail">
+                    <div class="caption">
+                        <div><label>Forma 1</label></div>
+                        <div>
+                            <div class="control-label">Em kanji</div>
+                            <div><input id="txtKanji1" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.KanjiWord1 : "")"></div>
+                        </div>
+                        <div>
+                            <div class="control-label">Assunto</div>
+                            <div>
+                                <input id="txtSubject1" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.Subject1 : "")">
+                                <input id="txtSubjectID1" type="hidden" value="@(Model.Word != null && Model.Word.SubjectID1 != 0 ? Model.Word.SubjectID1.ToString() : "")">
+                            </div>
+                        </div>
+                        <div>
+                            <div class="control-label">Tradução</div>
+                            <div><input id="txtTranslation1" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.Word1 : "")"></div>
+                        </div>
+                        <div>
+                            <div class="control-label">Imagem</div>
+                            <div class="input-group">
+                                <input id="img1Name" class="form-control" type="text" disabled="disabled" value="@(Model.Word != null && Model.Word.HasImage1 ? "[imagem]" : "")" />
+                                <input id="img1" type="file" accept="image/*" style="display: none;" />
+                                <span class="input-group-btn" onclick="$('#img1').click()">
+                                    <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span></label>
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="control-label">Audio</div>
+                            <div class="input-group">
+                                <input id="audio1Name" class="form-control" type="text" disabled="disabled" value="@(Model.Word != null && Model.Word.HasAudio1 ? "[audio]" : "")" />
+                                <input id="audio1" type="file" accept="audio/*" style="display: none;" />
+                                <span class="input-group-btn" onclick="$('#audio1').click()">
+                                    <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span></label>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-4"style="padding: 0 4px; margin-top: 5px;">
+                <div class="thumbnail">
+                    <div class="caption">
+                        <div><label>Forma 2</label></div>
+                        <div>
+                            <div class="control-label">Em kanji</div>
+                            <div><input id="txtKanji2" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.KanjiWord2 : "")"></div>
+                        </div>
+                        <div>
+                            <div class="control-label">Assunto</div>
+                            <div>
+                                <input id="txtSubject2" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.Subject2 : "")">
+                                <input id="txtSubjectID2" type="hidden" value="@(Model.Word != null && Model.Word.SubjectID2 != 0 ? Model.Word.SubjectID2.ToString() : "")">
+                            </div>
+                        </div>
+                        <div>
+                            <div class="control-label">Tradução</div>
+                            <div><input id="txtTranslation2" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.Word2 : "")"></div>
+                        </div>
+                        <div>
+                            <div class="control-label">Imagem</div>
+                            <div class="input-group">
+                                <input id="img2Name" class="form-control" type="text" disabled="disabled" value="@(Model.Word != null && Model.Word.HasImage2 ? "[imagem]" : "")" />
+                                <input id="img2" type="file" accept="image/*" style="display: none;" />
+                                <span class="input-group-btn" onclick="$('#img2').click()">
+                                    <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span></label>
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="control-label">Audio</div>
+                            <div class="input-group">
+                                <input id="audio2Name" class="form-control" type="text" disabled="disabled" value="@(Model.Word != null && Model.Word.HasAudio2 ? "[audio]" : "")" />
+                                <input id="audio2" type="file" accept="audio/*" style="display: none;" />
+                                <span class="input-group-btn" onclick="$('#audio2').click()">
+                                    <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span></label>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-4" style="padding: 0 4px; margin-top: 5px;">
+                <div class="thumbnail">
+                    <div class="caption">
+                        <div><label>Forma 3</label></div>
+                        <div>
+                            <div class="control-label">Em kanji</div>
+                            <div><input id="txtKanji3" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.KanjiWord3 : "")"></div>
+                        </div>
+                        <div>
+                            <div class="control-label">Assunto</div>
+                            <div>
+                                <input id="txtSubject3" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.Subject3 : "")">
+                                <input id="txtSubjectID3" type="hidden" value="@(Model.Word != null && Model.Word.SubjectID3 != 0 ? Model.Word.SubjectID3.ToString() : "")">
+                            </div>
+                        </div>
+                        <div>
+                            <div class="control-label">Tradução</div>
+                            <div><input id="txtTranslation3" class="form-control" type="text" style="width: 100%;" value="@(Model.Word != null ? Model.Word.Word3 : "")"></div>
+                        </div>
+                        <div>
+                            <div class="control-label">Imagem</div>
+                            <div class="input-group">
+                                <input id="img3Name" class="form-control" type="text" disabled="disabled" value="@(Model.Word != null && Model.Word.HasImage3 ? "[imagem]" : "")" />
+                                <input id="img3" type="file" accept="image/*" style="display: none;" />
+                                <span class="input-group-btn" onclick="$('#img3').click()">
+                                    <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span></label>
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="control-label">Audio</div>
+                            <div class="input-group">
+                                <input id="audio3Name" class="form-control" type="text" disabled="disabled" value="@(Model.Word != null && Model.Word.HasAudio3 ? "[audio]" : "")" />
+                                <input id="audio3" type="file" accept="audio/*" style="display: none;" />
+                                <span class="input-group-btn" onclick="$('#audio3').click()">
+                                    <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span></label>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="text-align: right;">
+            <div class="clearfix" style="display: inline-block;">
+                <button id="btnRecord" type="button" class="btn btn-primary" onclick="Register()">@(Model.Word != null ? "Alterar" : "Cadastrar")</button>
+                <button type="button" class="btn btn-default" onclick="Cancel()">Cancelar</button>
+            </div>
+        </div>
+    </form>
+</div>

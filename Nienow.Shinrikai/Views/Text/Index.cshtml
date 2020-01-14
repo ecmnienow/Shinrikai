@@ -1,0 +1,235 @@
+﻿@model List<List<Nienow.Shinrikai.Text.Model.GText>>
+@{
+    ViewBag.Title = "Leitura de textos";
+
+    bool admOrTeacher = User.IsInRole("Administrator") || User.IsInRole("Teacher");
+}
+
+<script type="text/javascript">
+    var _url_DeclareKnowledge = "@Url.Action("DeclareKnowledge", "Text")";
+    var _url_Exercises = "@Url.Action("Index", "Exercises")";
+    var _url_GetText = "@Url.Action("GetText", "Text")";
+    var _url_RegisterLackOfKnowledge = "@Url.Action("RegisterLackOfKnowledge", "Text")";
+    var _url_RegisterText = "@Url.Action("Register", "Text")";
+</script>
+
+<script type="text/javascript">
+    var timeOutEvent;
+
+    $(function () {
+        NotificationDialog(4);
+        
+        $("#textContent").on("click", ".stretchText", function () {
+            if($(this).find("rt").is(":hidden"))
+                RegisterLackOfKnowledge($(this).data("id"));
+
+            $(this).find("rt").show();
+        });
+    });
+
+    function DeclareKnowledge(id) {
+        $.ajax({
+            type: "POST",
+            url: _url_DeclareKnowledge,
+            data: {
+                id: id
+            }
+        });
+    }
+
+    function DoExercises() {
+        var textId = $("#idExercise li").attr("data-id");
+        window.location = _url_Exercises + "?textId=" + textId;
+    }
+
+    function EditText(id) {
+        window.location = _url_RegisterText + "?id=" + id;
+    }
+
+    function LoadText(el, id) {
+        if (el.hasClass("disabled"))
+            return;
+
+        $("#idExercise").show();
+        $("#idExercise li").attr("data-id", id);
+        
+        $(".grammars .active").removeClass("active");
+        el.addClass("active");
+
+        $.ajax({
+            type: "POST",
+            url: _url_GetText,
+            dataType: "json",
+            data: {
+                id: id
+            }
+        })
+        .done(function (data) {
+            $(".grammar h2").html(data.Title);
+            $("#textContent").html(data.Body);
+
+            TriggerTimeOut(id);
+        });
+    }
+
+    function Next() {
+        if ($(".grammars .list-group-item.active").length == 0)
+            return false;
+
+        var next = $(".grammars .list-group-item.active").next();
+        while (true) {
+            if (!next || typeof next === "undefined" || !next.data("id"))
+                return false;
+
+            if (next.hasClass("disabled"))
+                next = next.next();
+            else {
+                LoadText(next, next.data("id"));
+                return false;
+            }
+        }
+    }
+
+    function Previous() {
+        if ($(".grammars .list-group-item.active").length == 0)
+            return false;
+
+        var previous = $(".grammars .list-group-item.active").prev();
+        while (true) {
+            if (!previous || typeof previous === "undefined" || !previous.data("id"))
+                return false;
+
+            if (previous.hasClass("disabled"))
+                previous = previous.prev();
+            else {
+                LoadText(previous, previous.data("id"));
+                return false;
+            }
+        }
+    }
+    
+    function RegisterLackOfKnowledge(wordId) {
+        $.ajax({
+            type: "POST",
+            url: _url_RegisterLackOfKnowledge,
+            dataType: "json",
+            data: {
+                wordId: wordId
+            }
+        });
+    }
+
+    function TriggerTimeOut(id) {
+        if (timeOutEvent)
+            clearTimeout(timeOutEvent);
+
+        timeOutEvent = setTimeout(function () {
+            console.log("Knowledge declared.");
+            DeclareKnowledge(id);
+        }, 20000);
+    }
+</script>
+
+<style type="text/css">
+    .grammar {
+        margin-bottom: 80px;
+    }
+
+        .grammars > li {
+            white-space: nowrap;
+        }
+
+            .grammars > li > span {
+                overflow-x: hidden;
+                text-overflow: ellipsis;
+                display: inline-block;
+                vertical-align: middle;
+                @if(admOrTeacher) { <text> width: calc(100% - 14px); </text> }
+                else{ <text> width: 100%; </text> }
+            }
+
+            .grammars > li > i {
+                vertical-align: middle;
+            }
+
+    #textContent {
+        font-size: 1.15em;
+    }
+
+    .glyphicon-edit:hover {
+        box-shadow: 0 0 10px gray;
+    }
+
+    .active .glyphicon-edit:hover {
+        box-shadow: 0 0 10px white;
+    }
+
+    .help {
+        cursor: pointer;
+    }
+
+    .navigation {
+        text-align: center;
+        width: 180px;
+        display: inline-block;
+        position: fixed;
+        right: 0;
+        left: 0;
+        margin-right: auto;
+        margin-left: auto;
+        bottom: 25px;
+    }
+
+        .navigation button {
+            box-shadow: 0 0 15px lightgray;
+        }
+
+    #idExercise {
+        margin-top: 20px;
+    }
+</style>
+
+<div class="grammar container">
+    <div id="menu" class="col-sm-2">
+        <div class="panel list-group navbar">
+            @foreach (var grp in Model)
+            {
+                var jlpt = grp.FirstOrDefault().Text.Level.ToString();
+                <a href="#" class="list-group-item btn-default" data-parent="#menu" data-toggle="collapse" data-target="#@jlpt" style="text-align: center;">
+                    <strong>@jlpt</strong>
+                </a>
+                <ul id="@jlpt" class="grammars list-group collapse">
+                    @foreach (var gra in grp)
+                    {
+                        <li class="list-group-item btn @(gra.HasEnoughLevel ? "" : "disabled")" data-id="@gra.Text.Index" data-exercises="@gra.HasExercises.ToString().ToLower()" onclick="LoadText($(this), @gra.Text.Index)">
+                            <span>@gra.Text.Title</span><!--
+                            -->@if (admOrTeacher){<i class="glyphicon glyphicon-edit" onclick="EditText(@gra.Text.Index); return false;"></i>}
+                        </li>
+                    }
+                </ul>
+            }
+        
+            <ul id="idExercise" class="list-group nav-stacked" style="display: none;">
+                <li class="list-group-item btn bottom list-group-item-info" onclick="DoExercises()">
+                    <span>Exercícios</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="col-sm-10">
+        <i class="help glyphicon glyphicon-question-sign pull-right" onclick="NotificationDialog(4, true);"></i>
+        <h2 class="center">Leitura de Textos</h2>
+        <div id="textContent">
+            <!--Apresentação inicial-->
+            Selecione um dos textos listados para começar.
+        </div>
+    </div>
+</div>
+
+<div class="panel-default navigation">
+    <div>
+        <button type="button" class="btn btn-default" onclick="Previous()">Anterior</button>
+        <button type="button" class="btn btn-default" onclick="Next()">Próximo</button>
+    </div>
+</div>

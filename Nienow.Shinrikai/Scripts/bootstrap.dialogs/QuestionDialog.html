@@ -1,0 +1,19 @@
+﻿<!-- Modal -->
+<div id="questionDialog" class="modal" role="dialog" style="z-index: 9999;">
+    <div class="modal-dialog" style="max-width: 500px;">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header" style="border-radius: 5px 5px 0 0;">
+                <button type="button" class="close" onclick="$('#questionDialog').remove()">&times;</button>
+                <h4 class="modal-title"></h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" onclick="">Sim</button>
+                <button type="button" class="btn btn-default" onclick="$('#questionDialog').remove();">Não</button>
+            </div>
+        </div>
+    </div>
+</div>
