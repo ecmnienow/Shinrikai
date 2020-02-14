@@ -1,0 +1,330 @@
+﻿@{
+    ViewBag.Title = "Leitura de Kanjis";
+}
+
+@section scripts {
+    <script type="text/javascript">
+        var _url_CheckAnswers = "@Url.Action("CheckAnswers", "Kanjis")";
+        var _url_GenerateLists = "@Url.Action("GenerateLists", "Kanjis")";
+        var _url_NextPage = "@Url.Action("NextPage", "Kanjis")";
+        var _url_PreviousPage = "@Url.Action("PreviousPage", "Kanjis")";
+        var _url_ShowPageStatus = "@Url.Action("ShowPageStatus", "Kanjis")";
+        var _url_ReloadList = "@Url.Action("ReloadList", "Kanjis")";
+    </script>
+    
+    <script type="text/javascript">
+        var _currentLevel = null;
+        var _mistakesMode = false;
+        var _currentPage = 0;
+        var _totalPages = 0;
+
+        $(function () {
+            ManageUI();
+            LoadLevel("N5");
+            NotificationDialog(7);
+        });
+
+        function ChangeMode() {
+            _mistakesMode = !_mistakesMode;
+            ManageUI();
+            LoadLevel(_currentLevel);
+        }
+
+        function CheckAnswers() {
+            if (!_currentLevel)
+                return;
+
+            var answers = [];
+            $.each($("#kanjisList .row"), function (i, n) {
+                var answer = {
+                    Kanji: $(n).find(".control-label label").text(),
+                    Answers: []
+                };
+
+                $.each($(n).find("input[type='text']"), function (i2, n2) {
+                    answer.Answers.push($(n2).val());
+                });
+
+                answers.push(answer);
+            });
+
+            var data = JSON.stringify({ 'answers': answers });
+
+            $.ajax({
+                type: "POST",
+                url: _url_CheckAnswers,
+                //traditional: true,
+                datatype: "json",
+                contentType: "application/json",
+                data: data
+            })
+            .done(function (data) {
+                $("#kanjisList").html(data);
+
+                ShowPageStatus(function () {
+                    ManageUI(function () {
+                        $("#btnCheck").removeClass("btn-primary");
+                        $("#btnCheck").addClass("btn-disable");
+                    });
+                });
+            });
+        }
+
+        function LoadLevel(level) {
+            if (!level)
+                return;
+
+            _currentLevel = level;
+
+            $.ajax({
+                type: "POST",
+                url: _url_GenerateLists,
+                data: {
+                    level: level,
+                    mistakes: _mistakesMode
+                }
+            })
+            .done(function (data) {
+                $("#kanjisList").html(data);
+                ShowPageStatus(ManageUI);
+            });
+        }
+
+        function ManageUI(callback) {
+            // ANTERIOR
+            if (_currentPage == 0 || _currentPage == 1) {
+                $("#btnPrevious").removeClass("btn-default");
+                $("#btnPrevious").addClass("btn-disable");
+            } else {
+                $("#btnPrevious").removeClass("btn-disable");
+                $("#btnPrevious").addClass("btn-default");
+            }
+
+            // PRÓXIMO
+            if (_currentPage == 0 || _currentPage == _totalPages) {
+                $("#btnNext").removeClass("btn-default");
+                $("#btnNext").addClass("btn-disable");
+            } else {
+                $("#btnNext").removeClass("btn-disable");
+                $("#btnNext").addClass("btn-default");
+            }
+
+            //CORRIGIR/REPETIR
+            if (_currentPage == 0 || !_currentLevel) {
+                $("#btnCheck, #btnRepeat").removeClass("btn-primary");
+                $("#btnCheck, #btnRepeat").addClass("btn-disable");
+            } else {
+                $("#btnCheck, #btnRepeat").removeClass("btn-disable");
+                $("#btnCheck, #btnRepeat").addClass("btn-primary");
+            }
+
+            //CORRIGIR
+            if ($("#kanjisList .row .error").length > 0) {
+                $("#btnCheck").removeClass("btn-primary");
+                $("#btnCheck").addClass("btn-disable");
+            }
+
+            //MISTAKES
+            if (_mistakesMode)
+                $("#btnMistakes").text("Modo normal");
+            else
+                $("#btnMistakes").text("Refazer erradas");
+
+            if (typeof callback === "function")
+                callback();
+        }
+
+        var loading = false;
+        function NextPage() {
+            if (_currentPage == _totalPages || loading)
+                return;
+
+            loading = true;
+
+            $.ajax({
+                type: "POST",
+                url: _url_NextPage,
+                data: {
+                    toJapanese: $("#optionsRadios2").is(":checked")
+                }
+            })
+            .done(function (data) {
+                $("#kanjisList").html(data);
+                ShowPageStatus(ManageUI);
+            })
+            .always(function () {
+                loading = false;
+            });
+        }
+        function PreviousPage() {
+            if (_currentPage == 0 || _currentPage == 1)
+                return;
+
+            loading = true;
+
+            $.ajax({
+                type: "POST",
+                url: _url_PreviousPage,
+                data: {
+                    toJapanese: $("#optionsRadios2").is(":checked")
+                }
+            })
+            .done(function (data) {
+                $("#kanjisList").html(data);
+                ShowPageStatus(ManageUI);
+            })
+            .always(function () {
+                loading = false;
+            });
+        }
+
+        function ReloadSubject() {
+            if (!_currentLevel)
+                return;
+
+            $.ajax({
+                type: "POST",
+                url: _url_ReloadList,
+                data: {
+                    toJapanese: $("#optionsRadios2").is(":checked")
+                }
+            })
+            .done(function (data) {
+                $("#kanjisList").html(data);
+                ShowPageStatus(ManageUI);
+            });
+        }
+
+        function ShowPageStatus(callback) {
+            $.ajax({
+                type: "POST",
+                url: _url_ShowPageStatus
+            })
+            .done(function (data) {
+                $("#page").html(data);
+
+                _currentPage = data.split("/")[0].trim(" ");
+                _totalPages = data.split("/")[1].trim(" ");
+
+                callback();
+            });
+        }
+    </script>
+
+    <style type="text/css">
+        .grammar.container {
+            margin-bottom: 30px;
+        }
+
+        .grammar .center {
+            float: none;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .grammar .center.title {
+            position: relative;
+        }
+
+            .grammar .center .help {
+                cursor: pointer;
+                position: absolute;
+                right: 5px;
+            }
+
+        .grammar > * {
+            max-width: 600px;
+        }
+
+        .grammar .clearfix {
+            margin-top: 5px;
+            padding-right: 5px;
+            padding-left: 5px;
+        }
+
+        .grammar .row {
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+            .grammar .row:not(:first-child) {
+                padding-top: 8px;
+            }
+
+        .grammar .col-sm-2, .grammar .col-sm-4, .grammar .col-sm-5, .grammar .col-sm-10 {
+            padding-right: 5px;
+            padding-left: 5px;
+        }
+
+        .grammar .no-padding {
+            padding: 0;
+        }
+
+        .grammar input {
+            margin-top: 2px;
+            margin-bottom: 2px;
+        }
+
+        .grammar .pager {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        .grammar .radio label:not(:first-child) {
+            margin-left: 10px !important;
+        }
+
+        .grammar .dropdown .dropdown-toggle {
+            width: calc(83.3333% - 10px);
+            margin-left: 5px;   
+        }
+
+        .grammar .control-label {
+            font-size: 1.4em;
+            margin-bottom: 0;
+        }
+
+        .grammar #page {
+            text-align: center;
+        }
+    </style>
+}
+
+<div class="grammar container">
+    <div class="center title">
+        <i class="help glyphicon glyphicon-question-sign" onclick="NotificationDialog(7, true);"></i>
+        <h2 class="col-sm-offset-2 col-sm-10">Leitura de Kanjis</h2>
+    </div>
+
+    <div class="center radio">
+        <div class="col-sm-2 control-label"></div>
+        <label><input type="radio" name="optionsRadios" id="rbtN5" value="option1" onclick="LoadLevel('N5')" checked="checked">N5</label>
+        <label><input type="radio" name="optionsRadios" id="rbtN4" value="option1" onclick="LoadLevel('N4')">N4</label>
+        <label><input type="radio" name="optionsRadios" id="rbtN3" value="option1" onclick="LoadLevel('N3')">N3</label>
+        <label><input type="radio" name="optionsRadios" id="rbtN2" value="option1" onclick="LoadLevel('N2')">N2</label>
+        <label><input type="radio" name="optionsRadios" id="rbtN1" value="option1" onclick="LoadLevel('N1')">N1</label>
+    </div>
+
+    <form class="form-horizontal center" role="form">
+        <div id="kanjisList"></div>
+        <nav>
+            <div class="col-sm-2"></div>
+            <div id="page" class="col-sm-10"></div>
+        </nav>
+        <nav>
+            <div class="col-sm-2"></div>
+            <ul class="pager">
+                <li><button id="btnPrevious" type="button" class="btn btn-default" onclick="if(!$(this).hasClass('btn-disable')) PreviousPage();">Anterior</button></li>
+                <li><button id="btnNext" type="button" class="btn btn-default" onclick="if(!$(this).hasClass('btn-disable')) NextPage();">Próximo</button></li>
+            </ul>
+        </nav>
+        <div class="clearfix">
+            <div class="col-sm-2"></div>
+            <button id="btnCheck" type="button" class="btn btn-primary" onclick="if(!$(this).hasClass('btn-disable')) CheckAnswers();">Corrigir</button>
+            <button id="btnRepeat" type="button" class="btn btn-primary" onclick="if(!$(this).hasClass('btn-disable')) ReloadSubject();">Repetir</button>
+            
+            <button id="btnMistakes" type="button" class="btn btn-primary pull-right" onclick="ChangeMode()">Refazer erradas</button>
+        </div>
+    </form>
+
+</div>

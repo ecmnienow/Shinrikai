@@ -1,0 +1,349 @@
+﻿@model Nienow.Shinrikai.Models.Vocabulary.MVocabulary
+@{
+    ViewBag.Title = "Transcrição para Hiragana";
+}
+
+@section scripts {
+    <script type="text/javascript">
+        var _url_CheckAnswers = "@Url.Action("CheckAnswers", "Transcription")";
+        var _url_GenerateVocabulary = "@Url.Action("GenerateVocabulary", "Transcription")";
+        var _url_NextPage = "@Url.Action("NextPage", "Transcription")";
+        var _url_PreviousPage = "@Url.Action("PreviousPage", "Transcription")";
+        var _url_ShowPageStatus = "@Url.Action("ShowPageStatus", "Transcription")";
+        var _url_ReloadVocabulary = "@Url.Action("ReloadVocabulary", "Transcription")";
+    </script>
+
+    <script type="text/javascript">
+        var _currentSubject = null;
+        var _mistakesMode = false;
+        var _currentPage = 0;
+        var _totalPages = 0;
+
+        $(function () {
+            ManageUI();
+            NotificationDialog(1);
+        });
+
+        function ChangeMode() {
+            if (!_currentSubject)
+                return;
+
+            _mistakesMode = !_mistakesMode;
+            ManageUI();
+            LoadSubject(_currentSubject);
+        }
+
+        function CheckAnswers() {
+            if (!_currentSubject)
+                return;
+
+            var answers = [];
+            $.each($("#wordsList .row"), function (i, n) {
+                answers.push({
+                    Word: $(n).find(".control-label label").text(),
+                    Answer: $(n).find("input[type='text']").val()
+                });
+            });
+
+            var data = JSON.stringify({ 'answers': answers });
+
+            $.ajax({
+                type: "POST",
+                url: _url_CheckAnswers,
+                datatype: "json",
+                contentType: "application/json",
+                data: data
+            })
+            .done(function (data) {
+                $("#wordsList").html(data);
+
+                ShowPageStatus(function () {
+                    ManageUI(function () {
+                        $("#btnCheck").removeClass("btn-primary");
+                        $("#btnCheck").addClass("btn-disable");
+                    });
+                });
+
+                if ($("#wordsList .has-error").length == 0)
+                    InformationDialog("Parabéns, todas as respostas estão corretas.");
+            });
+        }
+
+        function LoadSubject(name) {
+            if (!name)
+                return;
+
+            _currentSubject = name;
+            $("#subjectList").html(name + ' <span class="caret"></span>');
+
+            $.ajax({
+                type: "POST",
+                url: _url_GenerateVocabulary,
+                data: {
+                    subject: name,
+                    toJapanese: $("#optionsRadios2").is(":checked"),
+                    mistakes: _mistakesMode
+                }
+            })
+            .done(function (data) {
+                $("#wordsList").html(data);
+                ShowPageStatus(ManageUI);
+            });
+        }
+
+        function ManageUI(callback) {
+            // ANTERIOR
+            if (_currentPage == 0 || _currentPage == 1 || $("#wordsList .row").length == 0) {
+                $("#btnPrevious").removeClass("btn-default");
+                $("#btnPrevious").addClass("btn-disable");
+            } else {
+                $("#btnPrevious").removeClass("btn-disable");
+                $("#btnPrevious").addClass("btn-default");
+            }
+
+            // PRÓXIMO
+            if (_currentPage == 0 || _currentPage == _totalPages || $("#wordsList .row").length == 0) {
+                $("#btnNext").removeClass("btn-default");
+                $("#btnNext").addClass("btn-disable");
+            } else {
+                $("#btnNext").removeClass("btn-disable");
+                $("#btnNext").addClass("btn-default");
+            }
+
+            //CORRIGIR/REPETIR
+            if (_currentPage == 0 || !_currentSubject || $("#wordsList .row").length == 0) {
+                $("#btnCheck, #btnRepeat").removeClass("btn-primary");
+                $("#btnCheck, #btnRepeat").addClass("btn-disable");
+            } else {
+                $("#btnCheck, #btnRepeat").removeClass("btn-disable");
+                $("#btnCheck, #btnRepeat").addClass("btn-primary");
+            }
+
+            //CORRIGIR
+            if ($("#wordsList .row.has-error").length > 0) {
+                $("#btnCheck").removeClass("btn-primary");
+                $("#btnCheck").addClass("btn-disable");
+            }
+
+            //MISTAKES
+            if (_mistakesMode)
+                $("#btnMistakes").text("Modo normal");
+            else
+                $("#btnMistakes").text("Refazer erradas");
+
+            if (typeof callback === "function")
+                callback();
+        }
+
+        var loading = false;
+        function NextPage() {
+            if (_currentPage == _totalPages || loading)
+                return;
+
+            loading = true;
+
+            $.ajax({
+                type: "POST",
+                url: _url_NextPage,
+                data: {
+                    toJapanese: $("#optionsRadios2").is(":checked")
+                }
+            })
+            .done(function (data) {
+                $("#wordsList").html(data);
+                ShowPageStatus(ManageUI);
+            })
+            .always(function () {
+                loading = false;
+            });
+        }
+        function PreviousPage() {
+            if (_currentPage == 0 || _currentPage == 1)
+                return;
+
+            loading = true;
+
+            $.ajax({
+                type: "POST",
+                url: _url_PreviousPage,
+                data: {
+                    toJapanese: $("#optionsRadios2").is(":checked")
+                }
+            })
+            .done(function (data) {
+                $("#wordsList").html(data);
+                ShowPageStatus(ManageUI);
+            })
+            .always(function () {
+                loading = false;
+            });
+        }
+
+        function ReloadSubject() {
+            if (!_currentSubject)
+                return;
+
+            $.ajax({
+                type: "POST",
+                url: _url_ReloadVocabulary,
+                data: {
+                    toJapanese: $("#optionsRadios2").is(":checked")
+                }
+            })
+            .done(function (data) {
+                $("#wordsList").html(data);
+                ShowPageStatus(ManageUI);
+            });
+        }
+
+        function ShowPageStatus(callback) {
+            $.ajax({
+                type: "POST",
+                url: _url_ShowPageStatus
+            })
+            .done(function (data) {
+                $("#page").html(data);
+
+                if (data) {
+                    _currentPage = data.split("/")[0].trim(" ");
+                    _totalPages = data.split("/")[1].trim(" ");
+                }
+
+                callback();
+            });
+        }
+    </script>
+    
+    <style type="text/css">
+        .grammar.container {
+            margin-bottom: 30px;
+        }
+
+        .grammar .center {
+            float: none;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .grammar .center.title {
+            position: relative;
+        }
+
+            .grammar .center .help {
+                cursor: pointer;
+                position: absolute;
+                right: 5px;
+            }
+
+        .grammar > * {
+            max-width: 600px;
+        }
+
+        .grammar .clearfix {
+            margin-top: 5px;
+            padding-right: 5px;
+            padding-left: 5px;
+        }
+
+        .grammar .row {
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+            .grammar .row:not(:first-child) {
+                padding-top: 8px;
+            }
+
+        .grammar .row label {
+            white-space: nowrap;
+            overflow-x: visible;
+            direction: rtl;
+        }
+
+        .grammar .col-sm-2, .grammar .col-sm-4, .grammar .col-sm-5, .grammar .col-sm-10 {
+            padding-right: 5px !important;
+            padding-left: 5px !important;
+        }
+
+        .grammar .no-padding {
+            padding: 0;
+        }
+
+        .grammar input {
+            margin-top: 2px;
+            margin-bottom: 2px;
+        }
+
+        .grammar .pager {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        .grammar .dropdown .btn-group {
+            display: inline-block;
+        }
+
+        .grammar .dropdown .dropdown-menu {
+            margin-left: 5px;
+            margin-right: 5px;
+            max-width: 490px;
+        }
+
+        .grammar .dropdown .dropdown-toggle,
+        .grammar .dropdown .dropdown-menu {
+            width: 100%;
+        }
+
+        .grammar .dropdown .dropdown-menu {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .grammar #page {
+            text-align: center;
+        }
+    </style>
+}
+
+<div class="grammar container">
+    <div class="center title">
+        <i class="help glyphicon glyphicon-question-sign" onclick="NotificationDialog(1, true);"></i>
+        <h2 class="col-sm-offset-2 col-sm-10">Transcrição para Hiragana</h2>
+    </div>
+    
+    <div class="center dropdown">
+        <div class="col-sm-2 control-label"></div>
+        <div class="col-sm-10" role="group" aria-label="Justified button group with nested dropdown" style="margin-bottom: 5px;">
+            <a id="subjectList" href="#" class="btn btn-default dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Selecione <span class="caret"></span></a>
+            <ul class="dropdown-menu">
+                @foreach(var subject in Model.Subjects)
+                {
+                    <li><a href="#" data-id="@subject.Key" data-name="@subject.Value" onclick="LoadSubject('@subject.Value')">@subject.Value</a></li>
+                }
+            </ul>
+        </div>
+    </div>
+
+    <form class="form-horizontal center" role="form">
+        <div id="wordsList"></div>
+        <nav>
+            <div class="col-sm-2"></div>
+            <div id="page" class="col-sm-10"></div>
+        </nav>
+        <nav>
+            <div class="col-sm-2"></div>
+            <ul class="pager">
+                <li><button id="btnPrevious" type="button" class="btn btn-default" onclick="if(!$(this).hasClass('btn-disable')) PreviousPage();">Anterior</button></li>
+                <li><button id="btnNext" type="button" class="btn btn-default" onclick="if(!$(this).hasClass('btn-disable')) NextPage();">Próximo</button></li>
+            </ul>
+        </nav>
+        <div class="clearfix">
+            <div class="col-sm-2"></div>
+            <button id="btnCheck" type="button" class="btn btn-primary" onclick="if(!$(this).hasClass('btn-disable')) CheckAnswers();">Corrigir</button>
+            <button id="btnRepeat" type="button" class="btn btn-primary" onclick="if(!$(this).hasClass('btn-disable')) ReloadSubject();">Repetir</button>
+            
+            <button id="btnMistakes" type="button" class="btn btn-primary pull-right" onclick="ChangeMode()">Refazer erradas</button>
+        </div>
+    </form>
+
+</div>
