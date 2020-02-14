@@ -1,6 +1,7 @@
-﻿using System.Web.Mvc;
+﻿using System.Web;
+using System.Web.Mvc;
 
-namespace Nienow.Shinrikai.App_Start
+namespace Nienow.Shinrikai
 {
     public class FilterConfig
     {

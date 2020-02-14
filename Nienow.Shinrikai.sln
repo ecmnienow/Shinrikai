@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai", "Nienow.Shinrikai\Nienow.Shinrikai.csproj", "{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}"
-EndProject
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29709.97
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai.User", "Nienow.Shinrikai.User\Nienow.Shinrikai.User.csproj", "{FDCD5346-1528-494C-A5BA-D6ED69CD240A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Helper", "Nienow.Helper\Nienow.Helper.csproj", "{4E46F631-58E1-4B52-9200-33AE73BDD8C4}"
@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai.Monitoring
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai.Exercises", "Nienow.Shinrikai.Exercises\Nienow.Shinrikai.Exercises.csproj", "{BDC09980-0A14-4994-AEF4-C1FE477A9B41}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai", "Nienow.Shinrikai\Nienow.Shinrikai.csproj", "{E7728B83-9112-4CD2-9C3C-B421C75B3021}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,12 +35,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FEB2E76A-0392-4C5D-A12A-9EF97DE7FFB2}.Release|x86.ActiveCfg = Release|Any CPU
 		{FDCD5346-1528-494C-A5BA-D6ED69CD240A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{FDCD5346-1528-494C-A5BA-D6ED69CD240A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDCD5346-1528-494C-A5BA-D6ED69CD240A}.Debug|x86.ActiveCfg = Debug|Any CPU
@@ -107,8 +103,19 @@ Global
 		{BDC09980-0A14-4994-AEF4-C1FE477A9B41}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BDC09980-0A14-4994-AEF4-C1FE477A9B41}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BDC09980-0A14-4994-AEF4-C1FE477A9B41}.Release|x86.ActiveCfg = Release|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Debug|x86.Build.0 = Debug|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|x86.ActiveCfg = Release|Any CPU
+		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B1623FFB-6EB7-45D0-96F9-8D51B7A7E183}
 	EndGlobalSection
 EndGlobal
