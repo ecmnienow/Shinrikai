@@ -1,11 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.29709.97
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33424.131
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai.User", "Nienow.Shinrikai.User\Nienow.Shinrikai.User.csproj", "{FDCD5346-1528-494C-A5BA-D6ED69CD240A}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Helper", "Nienow.Helper\Nienow.Helper.csproj", "{4E46F631-58E1-4B52-9200-33AE73BDD8C4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.DataBaseConn", "Nienow.DataBaseConn\Nienow.DataBaseConn.csproj", "{6BF3BD55-AA40-422C-916B-0C9C05F219BE}"
 EndProject
@@ -27,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai.Exercises"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Shinrikai", "Nienow.Shinrikai\Nienow.Shinrikai.csproj", "{E7728B83-9112-4CD2-9C3C-B421C75B3021}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nienow.Helper", "Nienow.Helper\Nienow.Helper.csproj", "{4E46F631-58E1-4B52-9200-33AE73BDD8C4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,14 +41,6 @@ Global
 		{FDCD5346-1528-494C-A5BA-D6ED69CD240A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FDCD5346-1528-494C-A5BA-D6ED69CD240A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{FDCD5346-1528-494C-A5BA-D6ED69CD240A}.Release|x86.ActiveCfg = Release|Any CPU
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|x86.ActiveCfg = Debug|x86
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|x86.Build.0 = Debug|x86
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|x86.ActiveCfg = Release|x86
-		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|x86.Build.0 = Release|x86
 		{6BF3BD55-AA40-422C-916B-0C9C05F219BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6BF3BD55-AA40-422C-916B-0C9C05F219BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6BF3BD55-AA40-422C-916B-0C9C05F219BE}.Debug|x86.ActiveCfg = Debug|Any CPU
@@ -111,6 +103,14 @@ Global
 		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|x86.ActiveCfg = Release|Any CPU
 		{E7728B83-9112-4CD2-9C3C-B421C75B3021}.Release|x86.Build.0 = Release|Any CPU
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|x86.ActiveCfg = Debug|x86
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Debug|x86.Build.0 = Debug|x86
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|x86.ActiveCfg = Release|x86
+		{4E46F631-58E1-4B52-9200-33AE73BDD8C4}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
