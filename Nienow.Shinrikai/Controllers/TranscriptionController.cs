@@ -6,46 +6,26 @@ using Nienow.Shinrikai.Vocabulary.Model;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Web.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Nienow.Shinrikai.Controllers
 {
     public class TranscriptionController : Controller
     {
+        public TranscriptionController(MonitoringManager monitoringManager, UserManager userManager, TranscriptionManager transcriptionManager)
+        {
+            this._monitoringManager = monitoringManager;
+            this._userManager = userManager;
+            this._transcriptionManager = transcriptionManager;
+        }
+
         #region Managers
 
-        private MonitoringManager MonitoringMng
-        {
-            get
-            {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
+        private MonitoringManager _monitoringManager;
 
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
-        }
+        public TranscriptionManager _transcriptionManager;
 
-        public TranscriptionManager TranscriptionMng
-        {
-            get
-            {
-                if (Session["TranscriptionManager"] == null)
-                    Session["TranscriptionManager"] = new TranscriptionManager();
-
-                return Session["TranscriptionManager"] as TranscriptionManager;
-            }
-        }
-
-        private UserManager UserMng
-        {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
-
-                return Session["UserManager"] as UserManager;
-            }
-        }
+        private UserManager _userManager;
 
         #endregion
 
@@ -54,11 +34,11 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult Index()
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Transcricao de vocabulario", "Pagina inicial", null, Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Transcricao de vocabulario", "Pagina inicial", null, HttpContext.Session.Id);
 
             var mdl = new MVocabulary();
-            mdl.Subjects = this.TranscriptionMng.Subjects();
+            mdl.Subjects = this._transcriptionManager.Subjects();
 
             return View(mdl);
         }
@@ -67,14 +47,14 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult CheckAnswers(List<GWordAnswer> answers)
         {
             if (answers == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+                return new StatusCodeResult((int)HttpStatusCode.BadRequest);
 
-            var user = this.UserMng.GetUser(this.User.Identity.Name);
+            var user = this._userManager.GetUser(this.User.Identity.Name);
 
-            var result = this.TranscriptionMng.CheckAnswers(user.ID, answers);
+            var result = this._transcriptionManager.CheckAnswers(user.ID, answers);
 
             //Registra interação do usuário
-            this.MonitoringMng.AddMonitor(user.ID, "Transcricao de vocabulario", "Verificar respostas", result.Count(r => !r.Wrong) + " Acertos", Session.SessionID);
+            this._monitoringManager.AddMonitor(user.ID, "Transcricao de vocabulario", "Verificar respostas", result.Count(r => !r.Wrong) + " Acertos", HttpContext.Session.Id);
 
             return View("TranscriptionItems", result);
         }
@@ -83,22 +63,22 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult GenerateVocabulary(string subject, bool toJapanese, bool mistakes)
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Transcricao de vocabulario", "Gerar lista", subject + (mistakes ? " mistakes" : ""), Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Transcricao de vocabulario", "Gerar lista", subject + (mistakes ? " mistakes" : ""), HttpContext.Session.Id);
 
-            this.TranscriptionMng.GenerateVocabulary(user.ID, subject, mistakes);
-            var vocabulary = this.TranscriptionMng.NextPage();
+            this._transcriptionManager.GenerateVocabulary(user.ID, subject, mistakes);
+            var vocabulary = this._transcriptionManager.NextPage();
             return View("TranscriptionItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
 
         [HttpPost]
         public ActionResult NextPage(bool toJapanese)
         {
-            var vocabulary = this.TranscriptionMng.NextPage();
-            
+            var vocabulary = this._transcriptionManager.NextPage();
+
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Transcricao de vocabulario", "Proxima pagina", this.TranscriptionMng.CurrentPage.ToString(), Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Transcricao de vocabulario", "Proxima pagina", this._transcriptionManager.CurrentPage.ToString(), HttpContext.Session.Id);
 
             return View("TranscriptionItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
@@ -106,11 +86,11 @@ namespace Nienow.Shinrikai.Controllers
         [HttpPost]
         public ActionResult PreviousPage(bool toJapanese)
         {
-            var vocabulary = this.TranscriptionMng.PreviousPage();
+            var vocabulary = this._transcriptionManager.PreviousPage();
 
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Transcricao de vocabulario", "Proxima anterior", this.TranscriptionMng.CurrentPage.ToString(), Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Transcricao de vocabulario", "Proxima anterior", this._transcriptionManager.CurrentPage.ToString(), HttpContext.Session.Id);
 
             return View("TranscriptionItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
@@ -119,27 +99,27 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult ReloadVocabulary(bool toJapanese)
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Transcricao de vocabulario", "Repetir lista", null, Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Transcricao de vocabulario", "Repetir lista", null, HttpContext.Session.Id);
 
-            var vocabulary = this.TranscriptionMng.ReloadVocabulary();
+            var vocabulary = this._transcriptionManager.ReloadVocabulary();
             return View("TranscriptionItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
-        
+
         [HttpPost]
         public JsonResult SearchKanjiWord(string term)
         {
-            if(string.IsNullOrWhiteSpace(term))
+            if (string.IsNullOrWhiteSpace(term))
                 return Json(new List<TWord>());
 
-            var word = this.TranscriptionMng.SearchKanjiWord(term).Take(10);
+            var word = this._transcriptionManager.SearchKanjiWord(term).Take(10);
             return Json(word);
         }
 
         [HttpPost]
         public JsonResult ShowPageStatus()
         {
-            var pageStatus = this.TranscriptionMng.ShowPageStatus();
+            var pageStatus = this._transcriptionManager.ShowPageStatus();
             return Json(pageStatus);
         }
 

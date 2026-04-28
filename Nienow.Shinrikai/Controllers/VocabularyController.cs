@@ -8,65 +8,48 @@ using Nienow.Shinrikai.Vocabulary.Model;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
-using System.Web.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Nienow.Shinrikai.Dictionary;
+using Microsoft.AspNetCore.Http;
 
 namespace Nienow.Shinrikai.Controllers
 {
     public class VocabularyController : Controller
     {
+        public VocabularyController(MonitoringManager monitoringManager, UserManager userManager, VocabularyManager vocabularyManager)
+        {
+            this._monitoringManager = monitoringManager;
+            this._userManager = userManager;
+            this._vocabularyManager = vocabularyManager;
+        }
+
         #region Managers
 
-        private MonitoringManager MonitoringMng
-        {
-            get
-            {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
+        private MonitoringManager _monitoringManager;
 
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
-        }
+        private UserManager _userManager;
 
-        private UserManager UserMng
-        {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
-
-                return Session["UserManager"] as UserManager;
-            }
-        }
-
-        private VocabularyManager VocabylaryMng
-        {
-            get
-            {
-                if (Session["VocabularyManager"] == null)
-                    Session["VocabularyManager"] = new VocabularyManager();
-
-                return Session["VocabularyManager"] as VocabularyManager;
-            }
-        }
+        private VocabularyManager _vocabularyManager;
 
         #endregion
 
         #region Register
-        
+
         [Authorize(Roles = "Administrator, Teacher")]
         public ActionResult Register(int id = 0)
         {
             var mdl = new MVocabulary();
-            mdl.Subjects = this.VocabylaryMng.Subjects();
-            if(id != 0)
-                mdl.Word = this.VocabylaryMng.GetWord(id);
+            mdl.Subjects = this._vocabularyManager.Subjects();
+            if (id != 0)
+                mdl.Word = this._vocabularyManager.GetWord(id);
 
             return View(mdl);
         }
 
         [Authorize(Roles = "Administrator, Teacher")]
         [HttpPost]
-        public JsonResult AddWord(TWord word, HttpPostedFileBase file1, HttpPostedFileBase file2, HttpPostedFileBase file3, HttpPostedFileBase file4, HttpPostedFileBase file5, HttpPostedFileBase file6)
+        public JsonResult AddWord(TWord word, IFormFile file1, IFormFile file2, IFormFile file3, IFormFile file4, IFormFile file5, IFormFile file6)
         {
             if (string.IsNullOrWhiteSpace(word.Kana)) return Json(false);
             if (string.IsNullOrWhiteSpace(word.Romaji)) return Json(false);
@@ -76,34 +59,36 @@ namespace Nienow.Shinrikai.Controllers
             if (string.IsNullOrWhiteSpace(word.Word1)) return Json(false);
 
             if ((!string.IsNullOrWhiteSpace(word.KanjiWord2) || !(word.SubjectID2 > 0) || !string.IsNullOrWhiteSpace(word.Word2)) &&
-                (!string.IsNullOrWhiteSpace(word.KanjiWord2) && !(word.SubjectID2 <= 0) && !string.IsNullOrWhiteSpace(word.Word2))) {
+                (!string.IsNullOrWhiteSpace(word.KanjiWord2) && !(word.SubjectID2 <= 0) && !string.IsNullOrWhiteSpace(word.Word2)))
+            {
                 if (word.SubjectID2 <= 0) return Json(false);
                 if (string.IsNullOrWhiteSpace(word.Word2)) return Json(false);
             }
-            
+
             if ((!string.IsNullOrWhiteSpace(word.KanjiWord3) || !(word.SubjectID3 > 0) || !string.IsNullOrWhiteSpace(word.Word3)) &&
-                (!string.IsNullOrWhiteSpace(word.KanjiWord3) && !(word.SubjectID3 > 0) && !string.IsNullOrWhiteSpace(word.Word3))) {
+                (!string.IsNullOrWhiteSpace(word.KanjiWord3) && !(word.SubjectID3 > 0) && !string.IsNullOrWhiteSpace(word.Word3)))
+            {
                 if (word.SubjectID3 <= 0) return Json(false);
                 if (string.IsNullOrWhiteSpace(word.Word3)) return Json(false);
             }
-            
-            if(file1 != null)
-                word.Image1 = file1.InputStream.ToByteArray();
-            if(file2 != null)
-                word.Image2 = file2.InputStream.ToByteArray();
-            if(file3 != null)
-                word.Image3 = file3.InputStream.ToByteArray();
-            if(file4 != null)
-                word.Audio1 = file4.InputStream.ToByteArray();
-            if(file5 != null)
-                word.Audio2 = file5.InputStream.ToByteArray();
-            if(file6 != null)
-                word.Audio3 = file6.InputStream.ToByteArray();
 
-            if(word.ID == 0)
-                this.VocabylaryMng.AddWord(word);
+            if (file1 != null)
+                word.Image1 = file1.OpenReadStream().ToByteArray();
+            if (file2 != null)
+                word.Image2 = file2.OpenReadStream().ToByteArray();
+            if (file3 != null)
+                word.Image3 = file3.OpenReadStream().ToByteArray();
+            if (file4 != null)
+                word.Audio1 = file4.OpenReadStream().ToByteArray();
+            if (file5 != null)
+                word.Audio2 = file5.OpenReadStream().ToByteArray();
+            if (file6 != null)
+                word.Audio3 = file6.OpenReadStream().ToByteArray();
+
+            if (word.ID == 0)
+                this._vocabularyManager.AddWord(word);
             else
-                this.VocabylaryMng.UpdateWord(word);
+                this._vocabularyManager.UpdateWord(word);
 
             return Json(true);
         }
@@ -114,9 +99,9 @@ namespace Nienow.Shinrikai.Controllers
         {
             if (string.IsNullOrWhiteSpace(search)) return Json(false);
 
-            var word = this.VocabylaryMng.GetWord(search);
+            var word = this._vocabularyManager.GetWord(search);
 
-            if(word == null)
+            if (word == null)
                 return Json(false);
 
             return Json(word);
@@ -218,11 +203,11 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult Index()
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Pagina inicial", null, HttpContext.Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Estudo de vocabulario", "Pagina inicial", null, HttpContext.Session.Id);
 
             var mdl = new MVocabulary();
-            mdl.Subjects = this.VocabylaryMng.Subjects();
+            mdl.Subjects = this._vocabularyManager.Subjects();
 
             return View(mdl);
         }
@@ -231,14 +216,14 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult CheckAnswers(List<GWordAnswer> answers, bool toJapanese)
         {
             if (answers == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+                return new StatusCodeResult((int)HttpStatusCode.BadRequest);
 
-            var user = this.UserMng.GetUser(this.User.Identity.Name);
+            var user = this._userManager.GetUser(this.User.Identity.Name);
 
-            var result = this.VocabylaryMng.CheckAnswers(user.ID, answers, toJapanese);
+            var result = this._vocabularyManager.CheckAnswers(user.ID, answers, toJapanese);
 
             //Registra interação do usuário
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Verificar respostas", result.Count(r => !r.Wrong) + " Acertos", HttpContext.Session.SessionID);
+            this._monitoringManager.AddMonitor(user.ID, "Estudo de vocabulario", "Verificar respostas", result.Count(r => !r.Wrong) + " Acertos", HttpContext.Session.Id);
 
             return View("TranslationItems", result);
         }
@@ -247,22 +232,22 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult GenerateVocabulary(string subject, bool toJapanese, bool mistakes)
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Gerar lista", subject + (mistakes ? " mistakes" : ""), HttpContext.Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Estudo de vocabulario", "Gerar lista", subject + (mistakes ? " mistakes" : ""), HttpContext.Session.Id);
 
-            this.VocabylaryMng.GenerateVocabulary(user.ID, subject, mistakes);
-            var vocabulary = this.VocabylaryMng.NextPage(toJapanese);
+            this._vocabularyManager.GenerateVocabulary(user.ID, subject, mistakes);
+            var vocabulary = this._vocabularyManager.NextPage(toJapanese);
             return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
 
         [HttpPost]
         public ActionResult NextPage(bool toJapanese)
         {
-            var vocabulary = this.VocabylaryMng.NextPage(toJapanese);
-            
+            var vocabulary = this._vocabularyManager.NextPage(toJapanese);
+
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Proxima pagina", this.VocabylaryMng.CurrentPage.ToString(), HttpContext.Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Estudo de vocabulario", "Proxima pagina", this._vocabularyManager.CurrentPage.ToString(), HttpContext.Session.Id);
 
             return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
@@ -270,11 +255,11 @@ namespace Nienow.Shinrikai.Controllers
         [HttpPost]
         public ActionResult PreviousPage(bool toJapanese)
         {
-            var vocabulary = this.VocabylaryMng.PreviousPage(toJapanese);
+            var vocabulary = this._vocabularyManager.PreviousPage(toJapanese);
 
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Proxima anterior", this.VocabylaryMng.CurrentPage.ToString(), HttpContext.Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Estudo de vocabulario", "Proxima anterior", this._vocabularyManager.CurrentPage.ToString(), HttpContext.Session.Id);
 
             return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
@@ -283,17 +268,17 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult ReloadVocabulary(bool toJapanese)
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Repetir lista", null, HttpContext.Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Estudo de vocabulario", "Repetir lista", null, HttpContext.Session.Id);
 
-            var vocabulary = this.VocabylaryMng.ReloadVocabulary(toJapanese);
+            var vocabulary = this._vocabularyManager.ReloadVocabulary(toJapanese);
             return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
         }
 
         [HttpPost]
         public JsonResult ShowPageStatus()
         {
-            var pageStatus = this.VocabylaryMng.ShowPageStatus();
+            var pageStatus = this._vocabularyManager.ShowPageStatus();
             return Json(pageStatus);
         }
 

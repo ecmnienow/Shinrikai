@@ -6,14 +6,20 @@ using Nienow.Shinrikai.Text.Model;
 using System.Text.RegularExpressions;
 using System.Text;
 using System.Linq;
+using Nienow.DataBaseConn;
 
 namespace Nienow.Shinrikai.Text
 {
     public class TextManager : ManagerCore
     {
+        public TextManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBText(dbConnectionConfig);
+        }
+
         #region Private Fields
 
-        private readonly DBText _db = new DBText();
+        private readonly DBText _db;
 
         #endregion
 

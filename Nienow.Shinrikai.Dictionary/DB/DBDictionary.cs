@@ -8,9 +8,9 @@ namespace Nienow.Shinrikai.Dictionary.DB
     {
         #region Constructors
 
-        public DBDictionary()
+        public DBDictionary(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

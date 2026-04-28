@@ -8,6 +8,8 @@
     <script type="text/javascript" src="../../Scripts/ckeditor/ckeditor.js"></script>
 
     <script type="text/javascript">
+        var _referrer = ""; @*"@Request.UrlReferrer"*@
+
         var _url_AddText = "@Url.Action("AddText", "Text")";
         var _url_RegisterExercises = "@Url.Action("Register", "Exercises")";
         var _textId = @Model.Index;
@@ -79,8 +81,8 @@
                     }
                     else {
                         InformationDialog("Texto alterado com sucesso!", null, function () {
-                            if("@Request.UrlReferrer")
-                                window.location = "@Request.UrlReferrer";
+                            if(_referrer)
+                                window.location = _referrer;
                             else
                                 window.location = window._url_Home; 
                         });

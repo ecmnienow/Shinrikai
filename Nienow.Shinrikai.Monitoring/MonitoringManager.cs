@@ -1,4 +1,5 @@
 ﻿using System;
+using Nienow.DataBaseConn;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring.DB;
 
@@ -6,9 +7,14 @@ namespace Nienow.Shinrikai.Monitoring
 {
     public class MonitoringManager : ManagerCore
     {
+        public MonitoringManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBMonitoring(dbConnectionConfig);
+        }
+
         #region Private Fields
 
-        private readonly DBMonitoring _db = new DBMonitoring();
+        private readonly DBMonitoring _db;
 
         #endregion
 

@@ -5,7 +5,7 @@
 
 @section scripts {
     <script type="text/javascript">
-        var _referrer = "@Request.UrlReferrer";
+        var _referrer = ""; @*"@Request.UrlReferrer"*@
         var _wordId = @(Model.Word != null ? Model.Word.ID : 0);
         
         var _url_AddWord = "@Url.Action("AddWord", "Vocabulary")";

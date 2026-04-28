@@ -4,14 +4,22 @@ using System.Linq;
 using Nienow.Shinrikai.Dictionary.DB;
 using Nienow.Shinrikai.Dictionary.Models;
 using Nienow.Shinrikai.Vocabulary;
+using Nienow.DataBaseConn;
 
 namespace Nienow.Shinrikai.Dictionary
 {
     public class DictionaryManager : ManagerCore
     {
+        public DictionaryManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBDictionary(dbConnectionConfig);
+            this._dbConnectionConfig = dbConnectionConfig;
+        }
+
         #region Private Fields
 
-        private readonly DBDictionary _db = new DBDictionary();
+        private readonly DBDictionary _db;
+        private readonly DBConnectionConfig _dbConnectionConfig;
 
         #endregion
 
@@ -20,7 +28,7 @@ namespace Nienow.Shinrikai.Dictionary
         private List<GSearchWord> SearchRelatedWords(ESearchType searchType, string text)
         {
             //var kanjiManager = new KanjiManager();
-            var vocManager = new VocabularyManager();
+            var vocManager = new VocabularyManager(this._dbConnectionConfig);
 
             var words = new List<GSearchWord>();
 

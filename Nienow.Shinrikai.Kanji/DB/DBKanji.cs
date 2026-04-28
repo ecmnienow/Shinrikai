@@ -13,9 +13,9 @@ namespace Nienow.Shinrikai.Kanji.DB
     {
         #region Constructors
 
-        public DBKanji()
+        public DBKanji(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

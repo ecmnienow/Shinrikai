@@ -12,9 +12,9 @@ namespace Nienow.Shinrikai.Vocabulary.DB
     {
         #region Constructors
 
-        public DBTranscription()
+        public DBTranscription(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

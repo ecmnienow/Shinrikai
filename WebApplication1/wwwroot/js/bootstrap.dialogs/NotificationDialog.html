@@ -1,0 +1,22 @@
+﻿<!-- Modal -->
+<div id="notificationDialog" class="modal" role="dialog" style="z-index: 9999;">
+    <div class="modal-dialog" style="max-width: 500px;">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header alert-info" style="border-radius: 5px 5px 0 0;">
+                <button type="button" class="close" onclick="$('#notificationDialog').remove();">&times;</button>
+                <h4 class="modal-title">Ajuda</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success">
+                    <i class="glyphicon glyphicon-check"></i>
+                    Entendi
+                </button>
+                <button type="button" class="btn btn-default" onclick="$('#notificationDialog').remove();">Sair</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -13,9 +13,9 @@ namespace Nienow.Shinrikai.Exercises.DB
     {
         #region Constructors
 
-        public DBExercise()
+        public DBExercise(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

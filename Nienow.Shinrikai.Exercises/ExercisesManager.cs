@@ -1,4 +1,5 @@
-﻿using Nienow.Helper;
+﻿using Nienow.DataBaseConn;
+using Nienow.Helper;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Exercises.DB;
 using Nienow.Shinrikai.Exercises.Model;
@@ -10,9 +11,14 @@ namespace Nienow.Shinrikai.Exercises
 {
     public class ExercisesManager : ManagerCore
     {
+        public ExercisesManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBExercise(dbConnectionConfig);
+        }
+
         #region Private Fields
 
-        private readonly DBExercise _db = new DBExercise();
+        private readonly DBExercise _db;
 
         #endregion
 

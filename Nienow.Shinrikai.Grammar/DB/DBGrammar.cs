@@ -13,9 +13,9 @@ namespace Nienow.Shinrikai.Grammar.DB
     {
         #region Constructors
 
-        public DBGrammar()
+        public DBGrammar(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

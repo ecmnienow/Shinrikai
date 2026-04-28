@@ -10,9 +10,9 @@ namespace Nienow.DataBaseConn
     {
         #region Constructors
 
-        public ShinrikaiDB()
+        public ShinrikaiDB(DBConnectionConfig dbConnectionConfig)
         {
-            DbConnection conn = new FbConnection(this._connString);
+            DbConnection conn = new FbConnection(dbConnectionConfig.ConnectionString);
             this._conn = conn;
         }
 
@@ -39,7 +39,7 @@ namespace Nienow.DataBaseConn
         private DbConnection _conn = null;
         private DbDataReader _dataReader = null;
 
-        private string _connString = ConfigurationManager.ConnectionStrings["ShinrikaiDB"].ConnectionString;
+        //private string _connString = ConfigurationManager.ConnectionStrings["ShinrikaiDB"].ConnectionString;
 //        private string _connString =
 //                @"character set=UTF8;
 //                  initial catalog=C:\Users\Everton\Desenvolvimento\DATA_BASES\SHINRIKAI.FDB;

@@ -1,82 +1,27 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{F80F8D04-31DF-4898-ADBE-A18D560EB004}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <TargetFramework>net7.0</TargetFramework>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
     <RootNamespace>Nienow.Shinrikai.Dictionary</RootNamespace>
     <AssemblyName>Nienow.Shinrikai.Dictionary</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <PlatformTarget>x86</PlatformTarget>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="DB\DBDictionary.cs" />
-    <Compile Include="DictionaryManager.cs" />
-    <Compile Include="ESearchType.cs" />
-    <Compile Include="Models\GResult.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Nienow.Helper\Nienow.Helper.csproj">
-      <Project>{4e46f631-58e1-4b52-9200-33ae73bdd8c4}</Project>
       <Name>Nienow.Helper</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nienow.DataBaseConn\Nienow.DataBaseConn.csproj">
-      <Project>{6BF3BD55-AA40-422C-916B-0C9C05F219BE}</Project>
       <Name>Nienow.DataBaseConn</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nienow.Shinrikai.Core\Nienow.Shinrikai.Core.csproj">
-      <Project>{0BD2568F-CBD7-445C-B0AF-B875196F9589}</Project>
       <Name>Nienow.Shinrikai.Core</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nienow.Shinrikai.Kanji\Nienow.Shinrikai.Kanji.csproj">
-      <Project>{23f78a43-7414-4e49-9d46-b252a0ba59f1}</Project>
       <Name>Nienow.Shinrikai.Kanji</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nienow.Shinrikai.Vocabulary\Nienow.Shinrikai.Vocabulary.csproj">
-      <Project>{8550b76e-795a-40f2-827f-b9914c459743}</Project>
       <Name>Nienow.Shinrikai.Vocabulary</Name>
     </ProjectReference>
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>

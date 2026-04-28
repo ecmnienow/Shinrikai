@@ -7,79 +7,44 @@ using Nienow.Shinrikai.Text;
 using Nienow.Shinrikai.User;
 using System;
 using System.Collections.Generic;
-using System.Web.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Nienow.Shinrikai.Controllers
 {
     public class ExercisesController : Controller
     {
+        public ExercisesController(ExercisesManager exercisesManager, GrammarManager grammarManager, MonitoringManager monitoringManager, TextManager textManager, UserManager userManager)
+        {
+            this._exercisesManager = exercisesManager;
+            this._grammarManager = grammarManager;
+            this._monitoringManager = monitoringManager;
+            this._textManager = textManager;
+            this._userManager = userManager;
+        }
+
         #region Managers
 
-        private ExercisesManager ExercisesMng
-        {
-            get
-            {
-                if (Session["ExercisesMng"] == null)
-                    Session["ExercisesMng"] = new ExercisesManager();
+        private ExercisesManager _exercisesManager;
 
-                return Session["ExercisesMng"] as ExercisesManager;
-            }
-        }
+        private GrammarManager _grammarManager;
 
-        private GrammarManager GrammarMng
-        {
-            get
-            {
-                if (Session["GrammarMng"] == null)
-                    Session["GrammarMng"] = new GrammarManager();
+        private MonitoringManager _monitoringManager;
 
-                return Session["GrammarMng"] as GrammarManager;
-            }
-        }
+        private TextManager _textManager;
 
-        private MonitoringManager MonitoringMng
-        {
-            get
-            {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
-
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
-        }
-
-        private TextManager TextMng
-        {
-            get
-            {
-                if (Session["TextMng"] == null)
-                    Session["TextMng"] = new TextManager();
-
-                return Session["TextMng"] as TextManager;
-            }
-        }
-
-        private UserManager UserMng
-        {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
-
-                return Session["UserManager"] as UserManager;
-            }
-        }
+        private UserManager _userManager;
 
         #endregion
 
         #region Register
 
         [Authorize(Roles = "Administrator, Teacher")]
-        [ValidateInput(false)]
+        //[ValidateInput(false)]
         [HttpPost]
         public JsonResult AddExercise(int id, int grammarId, int textId, string level, string question, int right, string option1, string option2, string option3, string option4, EJLPT jlpt)
         {
-            this.ExercisesMng.AddExercise(id, grammarId, textId, question, right, option1, option2, option3, option4, jlpt);
+            this._exercisesManager.AddExercise(id, grammarId, textId, question, right, option1, option2, option3, option4, jlpt);
 
             return Json(true);
         }
@@ -95,12 +60,12 @@ namespace Nienow.Shinrikai.Controllers
             {
                 exercise = new TExercise() { GrammarId = grammarId, TextId = textId };
                 if (grammarId != 0)
-                    exercise.Level = this.GrammarMng.GetGrammar(grammarId).Level;
+                    exercise.Level = this._grammarManager.GetGrammar(grammarId).Level;
                 if (textId != 0)
-                    exercise.Level = this.TextMng.GetText(textId).Level;
+                    exercise.Level = this._textManager.GetText(textId).Level;
             }
             else
-                exercise = this.ExercisesMng.GetExercise(id);
+                exercise = this._exercisesManager.GetExercise(id);
 
             return View(exercise);
         }
@@ -115,19 +80,19 @@ namespace Nienow.Shinrikai.Controllers
                 throw new InvalidOperationException();
 
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
+            var user = this._userManager.GetUser(User.Identity.Name);
             if(grammarId != 0)
-                this.MonitoringMng.AddMonitor(user.ID, "Resolução de exercícios", "Pagina inicial", "Gramática " + grammarId, Session.SessionID);
+                this._monitoringManager.AddMonitor(user.ID, "Resolução de exercícios", "Pagina inicial", "Gramática " + grammarId, HttpContext.Session.Id);
             if(textId != 0)
-                this.MonitoringMng.AddMonitor(user.ID, "Resolução de exercícios", "Pagina inicial", "Texto " + grammarId, Session.SessionID);
+                this._monitoringManager.AddMonitor(user.ID, "Resolução de exercícios", "Pagina inicial", "Texto " + grammarId, HttpContext.Session.Id);
             if(grammarId == 0 && textId == 0)
-                this.MonitoringMng.AddMonitor(user.ID, "Resolução de exercícios", "Pagina inicial", "Geral", Session.SessionID);
+                this._monitoringManager.AddMonitor(user.ID, "Resolução de exercícios", "Pagina inicial", "Geral", HttpContext.Session.Id);
 
             List<int> exercisesList;
             if(grammarId > 0 ^ textId > 0)
-                exercisesList = this.ExercisesMng.ListExercises(user.ID, user.JLPT, grammarId, textId);
+                exercisesList = this._exercisesManager.ListExercises(user.ID, user.JLPT, grammarId, textId);
             else
-                exercisesList = this.ExercisesMng.ListAllExercises(user.ID, user.JLPT);
+                exercisesList = this._exercisesManager.ListAllExercises(user.ID, user.JLPT);
 
             return View(exercisesList);
         }
@@ -136,11 +101,11 @@ namespace Nienow.Shinrikai.Controllers
         public ActionResult CheckAnswer(int id, int answer)
         {
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
+            var user = this._userManager.GetUser(User.Identity.Name);
 
-            var result = this.ExercisesMng.CheckAnswer(user.ID, id, answer);
+            var result = this._exercisesManager.CheckAnswer(user.ID, id, answer);
 
-            this.MonitoringMng.AddMonitor(user.ID, "Resolução de exercícios", "Verifica resposta", "Questao " + id + ": " + result.OK, Session.SessionID);
+            this._monitoringManager.AddMonitor(user.ID, "Resolução de exercícios", "Verifica resposta", "Questao " + id + ": " + result.OK, HttpContext.Session.Id);
             
             return Json(result);
         }
@@ -148,11 +113,11 @@ namespace Nienow.Shinrikai.Controllers
         [HttpPost]
         public JsonResult GetExercise(int id)
         {
-            var exercise = this.ExercisesMng.GetExercise(id);
+            var exercise = this._exercisesManager.GetExercise(id);
 
             //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Resolução de exercícios", "Selecao", id.ToString(), Session.SessionID);
+            var user = this._userManager.GetUser(User.Identity.Name);
+            this._monitoringManager.AddMonitor(user.ID, "Resolução de exercícios", "Selecao", id.ToString(), HttpContext.Session.Id);
 
             return Json(exercise);
         }

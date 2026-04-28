@@ -3,14 +3,20 @@ using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Grammar.DB;
 using Nienow.Shinrikai.Grammar.Model;
 using System.Linq;
+using Nienow.DataBaseConn;
 
 namespace Nienow.Shinrikai.Grammar
 {
     public class GrammarManager : ManagerCore
     {
+        public GrammarManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBGrammar(dbConnectionConfig);
+        }
+
         #region Private Fields
 
-        private readonly DBGrammar _db = new DBGrammar();
+        private readonly DBGrammar _db;
 
         #endregion
 

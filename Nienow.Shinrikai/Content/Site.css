@@ -17,31 +17,12 @@
 }
 
 /* Set width on the form input elements since they're 100% wide by default */
-/*input,
+input,
 select,
 textarea {
     max-width: 280px;
-}*/
-
-nav.dark-theme {
-    background: #3a3f48;
-    border-bottom: 1px solid #464a52;
-    box-shadow: 0px -1px 5px #282c33;
-    color: #818896;
 }
 
-    nav.dark-theme * {
-        color: #818896;
-        background-color: transparent;
-        /*color: #b8bfce;*/
-    }
-
-    nav.dark-theme li a:hover {
-        color: #ffffff;
-        background-color: transparent;
-        transition: all 0.3s ease;
-        /*color: #b8bfce;*/
-    }
 
 /******************************************************************************************************************************************/
 
@@ -106,6 +87,10 @@ nav.dark-theme {
 .sidebar-wrapper .sidebar-menu ul li a,
 #show-sidebar,
 #close-sidebar {
+    -webkit-transition: all 0.3s ease;
+    -moz-transition: all 0.3s ease;
+    -ms-transition: all 0.3s ease;
+    -o-transition: all 0.3s ease;
     transition: all 0.3s ease;
 }
 
@@ -155,10 +140,10 @@ nav.dark-theme {
 
 .sidebar-wrapper {
     width: 260px;
-    height: calc(100% - 50px);
-    max-height: calc(100% - 50px);
+    height: 100%;
+    max-height: 100%;
     position: fixed;
-    top: 50px;
+    top: 0;
     left: -300px;
     z-index: 999;
 }

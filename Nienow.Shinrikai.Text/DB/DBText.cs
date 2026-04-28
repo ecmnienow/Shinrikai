@@ -14,9 +14,9 @@ namespace Nienow.Shinrikai.Text.DB
     {
         #region Constructors
 
-        public DBText()
+        public DBText(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

@@ -1,0 +1,252 @@
+﻿@using Nienow.Shinrikai.Core
+@model Nienow.Shinrikai.Grammar.Model.TGrammar
+@{
+    ViewBag.Title = "Cadastro de Gramática";
+}
+
+@section scripts {
+    <script type="text/javascript" src="../../Scripts/ckeditor/ckeditor.js"></script>
+
+    <script type="text/javascript">
+        var _url_AddGrammar = "@Url.Action("AddGrammar", "Grammar")";
+        var _url_ListAllGrammars = "@Url.Action("ListAllGrammars", "Grammar")";
+        var _url_RegisterExercises = "@Url.Action("Register", "Exercises")";
+        var _grammarId = @Model.Index;
+        var _currentRequisites = [@(Model.Requisites != null ? string.Join(",", Model.Requisites) : "")];
+    </script>
+
+    <script type="text/javascript">
+        $(function () {
+            CKEDITOR.replace('editor', {
+                disableNativeSpellChecker: false,
+                resize_enabled: false,
+            });
+
+            // wait until the editor has done initializing
+            CKEDITOR.on("instanceReady", function () {
+                FixCKEditorPosition();
+            });
+
+            @if(Model.Index != 0)
+            {
+                <text>
+                var text = "@Html.Raw(Model.Body.Replace(Environment.NewLine, "").Replace("\n", "").Replace("\"", "\\\""))";
+                CKEDITOR.instances['editor'].setData(text);
+                </text>
+            }
+            
+            $("#requisite input[type='checkbox']").prop("checked", false);
+        });
+
+        function AddExercise() {
+            if(_grammarId == 0)
+                AlertDialog("Antes de adicionar um exercício ao conteúdo gramatical, este deve já estar cadastrado.", null);
+            else
+                window.location = _url_RegisterExercises + "?grammarId=" + _grammarId;
+        }
+
+        function Cancel() {
+            window.location = window._url_Home;
+        }
+
+        function FixCKEditorPosition() {
+            $("#cke_1_contents").css('height',
+                (($("#cke_1_contents").parent().parent().outerHeight() - $("#cke_1_top").outerHeight()) - 2) + 'px');
+        }
+
+        function Register() {
+            if (!Validate())
+                return;
+            
+            var title = $("#txtTitle").val();
+            var level = $(".radio input[type='radio']:checked").val();
+            var body = CKEDITOR.instances['editor'].getData();
+            var requisites = [];
+            
+            $.each($("#requisite input[type='checkbox']:checked"), function (i, n) {
+                requisites.push($(n).parent().data("id"));
+            });
+
+            $.ajax({
+                type: "POST",
+                url: _url_AddGrammar,
+                traditional: true,
+                data: {
+                    id: _grammarId,
+                    title: title,
+                    level: level,
+                    body: body,
+                    requisites: requisites
+                }
+            })
+            .done(function (data) {
+                if (data == true) {
+                    InformationDialog("Conteúdo cadastrado com sucesso!", null, function (){
+                        location.reload();
+                    });
+                }
+                else
+                    AlertDialog("Não foi possível cadastrar o novo conteúdo!");
+            });
+        }
+        
+        function SelectGrammar(e) {
+            var checkbox = e.find("input[type='checkbox']");
+
+            //Inverte o status de seleção
+            checkbox.prop("checked", !checkbox.is(":checked"));
+            
+            //Aplica o css
+            if (checkbox.is(":checked"))
+                e.addClass("list-group-item-info");
+            else
+                e.removeClass("list-group-item-info");
+        }
+
+        function StartRegister() {
+            if (!Validate())
+                return;
+
+            $("#requisite").show();
+            
+            $.ajax({
+                type: "POST",
+                url: _url_ListAllGrammars,
+                data: {
+                    jlpt: $('.requiredLevel input[name="jlpt"]:checked').val()
+                }
+            })
+            .done(function (data) {
+                $("#requisite .grammars").html("");
+                $.each(data, function (i, n) {
+                    if(n.Key != _grammarId)
+                        $("#requisite .grammars").append(
+                            '<li class="list-group-item btn' + (_currentRequisites.indexOf(n.Key) != -1 ? " list-group-item-info" : "") + '" data-id="' + n.Key + '" onclick="SelectGrammar($(this))">' +
+                                n.Value +
+                                '<input type="checkbox" style="display: none;" />' +
+                            '</li>'
+                        );
+                });
+            });
+        }
+        
+        function Validate() {
+            var title = $("#txtTitle").val();
+            if (!title || title.length == 0) {
+                AlertDialog("É obrigatório que informe um título para o conteúdo a ser cadastrado.");
+                return false;
+            }
+            
+            var body = CKEDITOR.instances['editor'].getData();
+            if (!body || body.length == 0) {
+                AlertDialog("O conteúdo a ser cadastrado não possui um corpo.");
+                return false;
+            }
+
+            return true;
+        }
+    </script>
+
+    <style type="text/css">
+        .grammar {
+            margin-bottom: 50px;
+        }
+
+            .grammar #cke_editor {
+                height: 400px;
+            }
+
+            .grammar .labelName {
+                display: inline-block;
+            }
+            .grammar .labelName:first-child {
+                margin-right: 15px;
+            }
+
+            .grammar .labelName:not(:first-child) {
+                width: calc(100% - 58px);
+            }
+
+                .grammar .labelName > input {
+                    width: 100%;
+                }
+
+            .grammar .requiredLevel {
+                display: inline-block;
+                margin-right: 15px;
+            }
+
+                .grammar .requiredLevel > label {
+                    margin-right: 10px;
+                }
+
+                .list-group-item.btn label {
+                    font-weight: normal;
+                    cursor: pointer;
+                }
+
+                #requisite .modal-body {
+                    max-height: 400px;
+                    overflow-x: auto;
+                }
+    </style>
+}
+
+<div class="grammar container">
+    <h2 class="center">Cadastro de Gramática</h2>
+    
+    <div>
+        <label class="labelName">Título</label>
+        <div class="labelName form-horizontal center">
+            <input id="txtTitle" type="text" value="@(Model.Index == 0 ? "" : Model.Title)" />
+        </div>
+    </div>
+
+    <div>
+        <label class="requiredLevel">Nível aconselhado</label>
+        <div class="requiredLevel form-horizontal center radio">
+            <label><input type="radio" name="jlpt" id="rbtNone" value="none" @(Model.Level == EJLPT.None ? "checked='checked'" : "")>Nenhum</label>
+            <label><input type="radio" name="jlpt" id="rbtN5" value="n5" @(Model.Level == EJLPT.N5 ? "checked='checked'" : "")>N5</label>
+            <label><input type="radio" name="jlpt" id="rbtN4" value="n4" @(Model.Level == EJLPT.N4 ? "checked='checked'" : "")>N4</label>
+            <label><input type="radio" name="jlpt" id="rbtN3" value="n3" @(Model.Level == EJLPT.N3 ? "checked='checked'" : "")>N3</label>
+            <label><input type="radio" name="jlpt" id="rbtN2" value="n2" @(Model.Level == EJLPT.N2 ? "checked='checked'" : "")>N2</label>
+            <label><input type="radio" name="jlpt" id="rbtN1" value="n1" @(Model.Level == EJLPT.N1 ? "checked='checked'" : "")>N1</label>
+        </div>
+    </div>
+
+    <div id="editor"></div>
+
+    <form class="form-horizontal center" role="form" style="margin-top: 15px;">
+        <div class="row" style="text-align: right; margin-right: 0; margin-left: 0;">
+            <div class="clearfix">
+                <div class="pull-left">
+                    <button type="button" class="btn btn-primary" onclick="StartRegister()">@(Model.Index == 0 ? "Cadastrar" : "Alterar")</button>
+                    <button type="button" class="btn btn-default" onclick="Cancel()">Cancelar</button>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="AddExercise()">Adicionar exercício</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Modal -->
+<div id="requisite" class="modal" role="dialog">
+    <div class="modal-dialog modal-sm">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" onclick="$('#requisite').hide()">&times;</button>
+                <h4 class="modal-title">Definir pré-requisitos</h4>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <ul class="grammars list-group"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="$('#requisite').hide(); Register();">OK</button>
+                <button type="button" class="btn btn-default" onclick="$('#requisite').hide();">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>

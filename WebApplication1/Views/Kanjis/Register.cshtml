@@ -1,0 +1,273 @@
+﻿@{
+    ViewBag.Title = "Cadastro de Kanjis";
+}
+
+@section scripts {
+    <script type="text/javascript">
+        var _kanjiId = 0;
+        var _url_AddKanji = "@Url.Action("AddKanji", "Kanjis")";
+        var _url_GetKanji = "@Url.Action("GetKanji", "Kanjis")";
+        var _url_UpdateKanji = "@Url.Action("UpdateKanji", "Kanjis")";
+    </script>
+
+    <script type="text/javascript">
+        $(function () {
+            $("#txtKanji").val("");
+            $("#txtKanji").prop("disabled", false);
+            $("#txtKana").val("");
+            $("#txtRomaji").val("");
+            $("#txtInfo").val("");
+            $("#rbtNone").prop("checked", true);
+            
+            $("#txtFileName").val("");
+            $('#fileImage').wrap('<form>').parent('form').trigger('reset');
+            $('#fileImage').unwrap();
+
+            var loadImage = function () {
+                $("#txtFileName").val($("#fileImage").val());
+            };
+
+            if (window.navigator.userAgent.indexOf("MSIE ") > 0) {
+                // IE suspends timeouts until after the file dialog closes
+                $("#fileImage").click(function (event) {
+                    setTimeout(function () {
+                        if ($("#fileImage").val().length > 0)
+                            loadImage();
+                    }, 0);
+                });
+            }
+            else
+                // All other browsers behave
+                $("#fileImage").change(loadImage);
+        });
+
+        function Cancel() {
+            window.location = window._url_Home;
+        }
+
+        function SearchKanji() {
+            var kanji = $("#txtKanji").val();
+            
+            if (!kanji || kanji.length == 0) {
+                $("#txtKanji").parent().parent().parent().addClass("has-error");
+                return;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: _url_GetKanji,
+                data: {
+                    kanjiLetter: kanji
+                }
+            })
+            .done(function (data) {
+                if (typeof data === "undefined" || data === null || !data)
+                    AlertDialog("Kanji não encontrado!");
+                else {
+                    $("#txtKanji").prop("disabled", true);
+                    $("#btnRecord").text("Alterar");
+
+                    _kanjiId = data.ID;
+                    $("#txtKana").val(data.Kana);
+                    $("#txtRomaji").val(data.Romaji);
+                    $("#txtInfo").val(data.Info);
+                    
+                    if (data.JLPT)
+                        $('#rbtLevel input[value="' + data.JLPT.toLowerCase() + '"]').prop("checked", true);
+                    else
+                        $('#rbtLevel input[value="none"]').prop("checked", true);
+                    
+                    if(data.HasImage === true)
+                        $("#txtFileName").val("[Imagem]");
+                }
+            });
+        }
+
+        function OpenFile() {
+            $("#fileImage").trigger('click');
+        }
+
+        function Register() {
+            if (!Validate())
+                return;
+
+            var file = $('#fileImage')[0].files[0];
+            var formData = new FormData();
+            formData.append("ID", _kanjiId);
+            formData.append("KanjiLetter", $("#txtKanji").val());
+            formData.append("Kana", $("#txtKana").val());
+            formData.append("Romaji", $("#txtRomaji").val());
+            formData.append("JLPT", $("#rbtLevel input[type='radio']:checked").val());
+            formData.append("Info", $("#txtInfo").val());
+            formData.append("file", file);
+
+            $.ajax({
+                type: "POST",
+                url: _kanjiId == 0 ? _url_AddKanji : _url_UpdateKanji,
+                data: formData,
+                processData: false,
+                contentType: false
+            })
+            .done(function (data) {
+                if (data == true) {
+                    if(_kanjiId == 0)
+                        InformationDialog("Kanji cadastrado com sucesso!", null, function () {
+                            location.reload();
+                        });
+                    else
+                        InformationDialog("Kanji alterado com sucesso!", null, function () {
+                            location.reload();
+                        });
+                }
+                else
+                    if (_kanjiId == 0)
+                        ErrorDialog("Não foi possível cadastrar o novo kanji!");
+                    else
+                        ErrorDialog("Não foi possível alterar o kanji!");
+            });
+        }
+        
+        function Validate() {
+            var kanji = $("#txtKanji").val();
+            var kana = $("#txtKana").val();
+            var romaji = $("#txtRomaji").val();
+            var info = $("#txtInfo").val();
+
+            var ok = true;
+            
+            if (!kanji || kanji.length != 1) {
+                $("#txtKanji").parent().parent().parent().addClass("has-error");
+                ok = false;
+            }
+
+            if (!kana) {
+                $("#txtKana").parent().parent().addClass("has-error");
+                ok = false;
+            }
+            
+            if (!romaji) {
+                $("#txtRomaji").parent().parent().addClass("has-error");
+                ok = false;
+            }
+
+            if (!info) {
+                $("#txtInfo").parent().parent().addClass("has-error");
+                ok = false;
+            }
+
+            return ok;
+        }
+    </script>
+
+    <style type="text/css">
+        .grammar.container {
+            margin-bottom: 30px;
+        }
+
+        .grammar .center {
+            float: none;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .grammar > * {
+            max-width: 700px;
+        }
+
+        .grammar .row {
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+            .grammar .row:not(:first-child) {
+                padding-top: 8px;
+            }
+
+        .grammar .col-sm-2, .grammar .col-sm-4, .grammar .col-sm-5, .grammar .col-sm-10 {
+            padding-right: 5px;
+            padding-left: 5px;
+        }
+
+        .grammar .no-padding {
+            padding: 0;
+        }
+
+        .grammar .pager {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        .grammar .radio label:nth-child(3) {
+            margin-left: 10px !important;
+        }
+
+        .grammar .dropdown .dropdown-toggle {
+            width: calc(83.3333% - 10px);
+            margin-left: 5px;
+        }
+    </style>
+}
+
+<div class="grammar container">
+
+    <form class="form-horizontal center" role="form">
+        <div class="row">
+            <h2 class="col-sm-offset-3 col-sm-9">Cadastro de Kanjis</h2>
+        </div>
+        <div class="row">
+            <label class="col-sm-3 control-label">Kanji</label>
+            <div class="col-sm-9">
+                <div class="input-group">
+                    <input id="txtKanji" class="form-control" type="text" maxlength="1">
+                    <span class="input-group-btn" onclick="SearchKanji()">
+                        <label class="btn btn-info"><span class="glyphicon glyphicon-search"></span> <span>Procurar</span></label>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <label class="col-sm-3 control-label">Kana</label>
+            <div class="col-sm-9"><input id="txtKana" class="form-control" type="text"></div>
+        </div>
+        <div class="row">
+            <label class="col-sm-3 control-label">Romaji</label>
+            <div class="col-sm-9"><input id="txtRomaji" class="form-control" type="text"></div>
+        </div>
+        <div class="row">
+            <label class="col-sm-3 control-label leftOverflow">Nível aconselhado</label>
+            <div id="rbtLevel" class="col-sm-9 form-horizontal radio">
+                <label><input type="radio" name="optionsRadios" id="rbtNone" value="none" checked="checked">Nenhum</label>
+                <label><input type="radio" name="optionsRadios" id="rbtN5" value="n5">N5</label>
+                <label><input type="radio" name="optionsRadios" id="rbtN4" value="n4">N4</label>
+                <label><input type="radio" name="optionsRadios" id="rbtN3" value="n3">N3</label>
+                <label><input type="radio" name="optionsRadios" id="rbtN2" value="n2">N2</label>
+                <label><input type="radio" name="optionsRadios" id="rbtN1" value="n1">N1</label>
+            </div>
+        </div>
+        <div class="row">
+            <label class="col-sm-3 control-label">Informações</label>
+            <div class="col-sm-9">
+                <textarea id='txtInfo' class="form-control col-sm-12" rows="3"></textarea>
+            </div>
+        </div>
+        <div class="row">
+            <label class="col-sm-3 control-label">Imagem</label>
+            <div class="col-sm-9">
+                <div class="input-group">
+                    <input id="txtFileName" class="form-control" type="text" disabled="disabled">
+                    <input id="fileImage" type="file" accept="image/*" style="display: none;" />
+                    <span class="input-group-btn" onclick="OpenFile()">
+                        <label class="btn btn-info"><span class="glyphicon glyphicon-folder-open"></span> <span>Arquivo</span></label>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" style="text-align: right;">
+            <div class="col-sm-12" style="display: inline-block; margin-top: 10px;">
+                <button id="btnRecord" type="button" class="btn btn-primary" onclick="Register()">Cadastrar</button>
+                <button type="button" class="btn btn-default" onclick="Cancel()">Cancelar</button>
+            </div>
+        </div>
+    </form>
+</div>

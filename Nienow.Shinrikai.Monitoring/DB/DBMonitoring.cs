@@ -9,9 +9,9 @@ namespace Nienow.Shinrikai.Monitoring.DB
     {
         #region Constructors
 
-        public DBMonitoring()
+        public DBMonitoring(DBConnectionConfig dbConnectionConfig)
         {
-            this._db = new ShinrikaiDB();
+            this._db = new ShinrikaiDB(dbConnectionConfig);
         }
 
         #endregion

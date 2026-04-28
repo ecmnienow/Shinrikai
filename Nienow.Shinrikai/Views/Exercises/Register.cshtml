@@ -8,7 +8,7 @@
     <script type="text/javascript">
         var _exerciseId = @Model.ID;
         var _grammarId = @Model.GrammarId;
-        var _referrer = "@Request.UrlReferrer";
+        var _referrer = ""; @*"@Request.UrlReferrer"*@
         var _textId = @Model.TextId;
         
         var _url_AddExercise = "@Url.Action("AddExercise", "Exercises")";

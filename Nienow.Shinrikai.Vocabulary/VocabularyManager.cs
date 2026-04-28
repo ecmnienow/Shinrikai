@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nienow.DataBaseConn;
 using Nienow.Helper;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Vocabulary.DB;
@@ -10,6 +11,11 @@ namespace Nienow.Shinrikai.Vocabulary
 {
     public class VocabularyManager : ManagerCore
     {
+        public VocabularyManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBVocabulary(dbConnectionConfig);
+        }
+
         #region Attributes and Properties
 
         private List<TWord> _vocabularyList;
@@ -71,7 +77,7 @@ namespace Nienow.Shinrikai.Vocabulary
 
         #region Private Fields
 
-        private readonly DBVocabulary _db = new DBVocabulary();
+        private readonly DBVocabulary _db;
 
         public bool _allCorrect = true;
 

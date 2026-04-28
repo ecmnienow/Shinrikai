@@ -5,11 +5,17 @@ using Nienow.Shinrikai.Kanji.DB;
 using Nienow.Shinrikai.Kanji.Model;
 using System.Linq;
 using System.Collections.Generic;
+using Nienow.DataBaseConn;
 
 namespace Nienow.Shinrikai.Kanji
 {
     public class KanjiManager : ManagerCore
     {
+        public KanjiManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBKanji(dbConnectionConfig);
+        }
+
         #region Attributes and Properties
 
         private List<TKanji> _kanjiList;
@@ -66,7 +72,7 @@ namespace Nienow.Shinrikai.Kanji
 
         #region Private Fields
 
-        private readonly DBKanji _db = new DBKanji();
+        private readonly DBKanji _db;
         private string _currentLevel = string.Empty;
 
         private int _lastRandomNumber;

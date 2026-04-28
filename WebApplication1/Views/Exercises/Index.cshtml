@@ -1,0 +1,287 @@
+﻿@model List<int>
+@{
+    ViewBag.Title = "Resolução de exercícios";
+
+    bool admOrTeacher = User.IsInRole("Administrator") || User.IsInRole("Teacher");
+}
+
+<script type="text/javascript">
+    var _referrer = ""; @*"@Request.UrlReferrer"*@
+    
+    var _url_CheckAnswer = "@Url.Action("CheckAnswer", "Exercises")";
+    var _url_GetExercise = "@Url.Action("GetExercise", "Exercises")";
+    var _url_RegisterExecise = "@Url.Action("Register", "Exercises")";
+</script>
+
+<script type="text/javascript">
+    $(function () {
+        NotificationDialog(5);
+
+        if($(".exercises li.active").length == 1)
+            LoadExercise($(".exercises li.active"), $(".exercises li.active").data("id"));
+    });
+
+    function Corrigir() {
+        if ($('input[name="rbtResponse"]:checked').length == 0) {
+            AlertDialog("Nenhuma resposta selecionada.");
+            return;
+        }
+
+        $.ajax({
+            type: "POST",
+            url: _url_CheckAnswer,
+            dataType: "json",
+            data: {
+                id: $(".exercises .list-group-item.active").data("id"),
+                answer: $('input[name="rbtResponse"]:checked').val()
+            }
+        })
+        .done(function (data) {
+            var atual = $(".exercises .list-group-item.active");
+            
+            if (data.OK === true)
+                SuccessDialog("Resposta correta!", null, function () {
+                    atual.addClass("success");
+                    atual.append('<i class="glyphicon glyphicon-check"></i>');
+                    
+                    FinishCheck(atual);
+                });
+            else
+                InformationDialog("Resposta errada!\n" + data.Message, null, function () {
+                    atual.addClass("fail");
+                    
+                    FinishCheck(atual);
+                });
+        });
+    }
+
+    function EditExercise(id) {
+        window.location = _url_RegisterExecise + "?id=" + id;
+    }
+
+    function FinishCheck(atual) {
+        $('input[name="rbtResponse"]').attr("checked", false);
+        Next(true);
+        atual.addClass("disabled");
+
+        if (!atual.next() || !atual.next().html() || typeof atual.next() === "undefined") {
+            var acertos = $(".exercises .list-group-item.success").length;
+            var total = $(".exercises .list-group-item").length;
+            InformationDialog("Todos os exercícios respondidos!\nVocê acertou " + acertos + " de " + total + ".", null, function () {
+                if (_referrer)
+                    window.location = _referrer;
+                else
+                    location.reload();
+            });
+        }
+    }
+
+    function LoadExercise(el, id) {
+        if (el.hasClass("fail") || el.hasClass("success")) {
+            AlertDialog("Você já fez este exercício.");
+            return;
+        }
+        else
+            if (el.hasClass("disabled")) {
+                AlertDialog("Primeiro deve-se fazer os exercícios antecessores.");
+                return;
+            }
+
+        $(".exercises .active").removeClass("active");
+        el.addClass("active");
+
+        $('input[name="rbtResponse"]:checked').attr("checked", false);
+
+        $.ajax({
+            type: "POST",
+            url: _url_GetExercise,
+            dataType: "json",
+            data: {
+                id: id
+            }
+        })
+        .done(function (data) {
+            $("#exerciseContent").show();
+            
+            $("#question").text(data.Question);
+            $("#response1").text(data.Option1);
+            $("#response2").text(data.Option2);
+            $("#response3").text(data.Option3);
+            $("#response4").text(data.Option4);
+
+            ShuffleElements($("#exerciseContent .options"));
+        });
+    }
+
+    function Next(enable) {
+        if ($(".exercises .list-group-item.active").length == 0)
+            return false;
+
+        var atual = $(".exercises .list-group-item.active");
+        var next = $(".exercises .list-group-item.active").next();
+        while (true) {
+            if (!next || typeof next === "undefined" || !next.data("id")) {
+                atual.removeClass("active");
+                return false;
+            }
+
+            if (enable && enable === true)
+                next.removeClass("disabled");
+            
+            if (next.hasClass("disabled"))
+                next = next.next();
+            
+            LoadExercise(next, next.data("id"));
+            return false;
+        }
+    }
+
+    function Previous() {
+        if ($(".exercises .list-group-item.active").length == 0)
+            return false;
+
+        var previous = $(".exercises .list-group-item.active").prev();
+        while (true) {
+            if (!previous || typeof previous === "undefined" || !previous.data("id"))
+                return false;
+
+            if (previous.hasClass("disabled"))
+                previous = previous.prev();
+            else {
+                LoadExercise(previous, previous.data("id"));
+                return false;
+            }
+        }
+    }
+</script>
+
+<style type="text/css">
+    .exercise {
+        margin-bottom: 80px;
+    }
+
+    .exercises > li > span {
+        overflow-x: hidden;
+        text-overflow: ellipsis;
+        display: inline-block;
+        vertical-align: middle;
+        @if(admOrTeacher) { <text> width: calc(100% - 28px); </text> }
+        else{ <text> width: calc(100% - 14px); </text> }
+    }
+
+    .exercises > li > i {
+        vertical-align: middle;
+    }
+
+    .exercises > li.success,
+    .exercises > li.success:hover {
+        color: green;
+    }
+
+    #exerciseContent {
+        font-size: 1.15em;
+    }
+
+    .glyphicon-edit:hover {
+        box-shadow: 0 0 10px gray;
+    }
+
+    .active .glyphicon-edit:hover {
+        box-shadow: 0 0 10px white;
+    }
+
+    .help {
+        cursor: pointer;
+    }
+
+    .navigation {
+        text-align: center;
+        width: 180px;
+        display: inline-block;
+        position: fixed;
+        right: 0;
+        left: 0;
+        margin-right: auto;
+        margin-left: auto;
+        bottom: 25px;
+    }
+
+        .navigation button {
+            box-shadow: 0 0 15px lightgray;
+        }
+
+    .panel {
+        box-shadow: none !important;
+        background-color: #FFF !important;
+        margin-bottom: 20px !important;
+        border: none !important;
+        border-radius: 0 !important;
+    }
+
+        .panel ul {
+            max-height: 200px;
+            overflow: hidden;
+        }
+
+            .panel ul.in {
+                overflow: auto;
+            }
+
+    #question {
+        font-size: 1.2em;
+    }
+</style>
+
+<div class="exercise container">
+    <div id="menu" class="col-sm-2">
+            <ul class="exercises list-group nav-stacked">
+                @{
+                    var counter = 1;
+                    foreach (var exerciseId in Model)
+                    {
+                        <li class="list-group-item btn @(counter == 1 ? "active" : "disabled")" data-id="@exerciseId" onclick="LoadExercise($(this), @exerciseId)">
+                            <span>Exercício @counter.ToString()</span>@if(admOrTeacher){<i class="glyphicon glyphicon-edit" onclick="EditExercise(@exerciseId)"></i>}
+                        </li>
+                        counter++;
+                    }
+                }
+            </ul>
+    </div>
+
+    <div class="col-sm-10">
+        <i class="help glyphicon glyphicon-question-sign pull-right" onclick="NotificationDialog(5, true);"></i>
+        <h2 class="center">Resolução de Exercícios</h2>
+        <br/>
+        <div id="exerciseContent" class="form-horizontal" style="display: none;">
+            <div id="question"></div>
+            <div class="options form-horizontal radio" style="margin-left: 20px;">
+                <div class="option">
+                    <input id="rbtResponse1" type="radio" value="1" name="rbtResponse" /><label id="response1" for="rbtResponse1"></label>
+                </div>
+                <div class="option">
+                    <input id="rbtResponse2" type="radio" value="2" name="rbtResponse" /><label id="response2" for="rbtResponse2"></label>
+                </div>
+                <div class="option">
+                    <input id="rbtResponse3" type="radio" value="3" name="rbtResponse" /><label id="response3" for="rbtResponse3"></label>
+                </div>
+                <div class="option">
+                    <input id="rbtResponse4" type="radio" value="4" name="rbtResponse" /><label id="response4" for="rbtResponse4"></label>
+                </div>
+            </div>
+        </div>
+        @if (Model.Count > 0)
+        {
+            <div style="margin-top: 50px;">
+                <button type="button" class="btn btn-primary" onclick="Corrigir()">Corrigir</button>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="panel-default navigation">
+    <div>
+        @*<button type="button" class="btn btn-default" onclick="Previous()">Anterior</button>
+        <button type="button" class="btn btn-default" onclick="Next()">Próximo</button>*@
+        @*<div><button type="button" class="btn btn-primary" onclick="Corrigir()">Corrigir</button></div>*@
+    </div>
+</div>

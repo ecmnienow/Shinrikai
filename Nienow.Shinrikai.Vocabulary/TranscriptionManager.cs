@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nienow.DataBaseConn;
 using Nienow.Helper;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Vocabulary.DB;
@@ -10,6 +11,11 @@ namespace Nienow.Shinrikai.Vocabulary
 {
     public class TranscriptionManager : ManagerCore
     {
+        public TranscriptionManager(DBConnectionConfig dbConnectionConfig)
+        {
+            this._db = new DBTranscription(dbConnectionConfig);
+        }
+
         #region Attributes and Properties
 
         private List<TWord> _vocabularyList;
@@ -72,7 +78,7 @@ namespace Nienow.Shinrikai.Vocabulary
 
         #region Private Fields
 
-        private readonly DBTranscription _db = new DBTranscription();
+        private readonly DBTranscription _db;
 
 
         public bool _allCorrect = true;
