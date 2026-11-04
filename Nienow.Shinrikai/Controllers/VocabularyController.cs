@@ -1,302 +1,150 @@
-﻿using System.Net;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nienow.Helper;
-using Nienow.Shinrikai.Models.Vocabulary;
+using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
 using Nienow.Shinrikai.Vocabulary;
 using Nienow.Shinrikai.Vocabulary.Model;
-using System.Collections.Generic;
-using System.Linq;
-using System.Web;
-using System.Web.Mvc;
+using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Controllers
 {
-    public class VocabularyController : Controller
+    public sealed record GenerateVocabularyRequest(int SubjectId, bool ToJapanese, bool Mistakes);
+
+    public sealed record CheckVocabularyRequest(string Subject, bool ToJapanese, IReadOnlyList<VocabularyAnswer> Answers);
+
+    public sealed record InteractionRequest(string Action, string? Option);
+
+    /// <summary>Formulário de cadastro: campos do TWord + até 3 imagens e 3 áudios.</summary>
+    public sealed class WordForm
     {
-        #region Managers
+        public int ID { get; set; }
+        public string? Kana { get; set; }
+        public string? Romaji { get; set; }
+        public int SubjectID1 { get; set; }
+        public int SubjectID2 { get; set; }
+        public int SubjectID3 { get; set; }
+        public string? KanjiWord1 { get; set; }
+        public string? KanjiWord2 { get; set; }
+        public string? KanjiWord3 { get; set; }
+        public string? Word1 { get; set; }
+        public string? Word2 { get; set; }
+        public string? Word3 { get; set; }
+        public IFormFile? Image1 { get; set; }
+        public IFormFile? Image2 { get; set; }
+        public IFormFile? Image3 { get; set; }
+        public IFormFile? Audio1 { get; set; }
+        public IFormFile? Audio2 { get; set; }
+        public IFormFile? Audio3 { get; set; }
 
-        private MonitoringManager MonitoringMng
+        public TWord ToWord() => new()
         {
-            get
-            {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
+            ID = ID, Kana = Kana, Romaji = Romaji,
+            SubjectID1 = SubjectID1, SubjectID2 = SubjectID2, SubjectID3 = SubjectID3,
+            KanjiWord1 = KanjiWord1, KanjiWord2 = KanjiWord2, KanjiWord3 = KanjiWord3,
+            Word1 = Word1, Word2 = Word2, Word3 = Word3,
+            Image1 = Read(Image1), Image2 = Read(Image2), Image3 = Read(Image3),
+            Audio1 = Read(Audio1), Audio2 = Read(Audio2), Audio3 = Read(Audio3),
+        };
 
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
+        private static byte[]? Read(IFormFile? file)
+        {
+            if (file is null || file.Length == 0) return null;
+            using var stream = file.OpenReadStream();
+            return stream.ToByteArray();
+        }
+    }
+
+    /// <summary>Port de VocabularyController (estudo + cadastro).</summary>
+    [ApiController]
+    [Route("api/vocabulary")]
+    [Authorize]
+    public sealed class VocabularyController(VocabularyService vocabulary, IMonitoringService monitoring) : ControllerBase
+    {
+        private const string Screen = "Estudo de vocabulario";
+
+        /// <summary>
+        /// Assuntos (usado no estudo e no cadastro). O registro de "Pagina inicial" é feito pela tela
+        /// de estudo via /interactions, para o cadastro não contar como acesso ao estudo.
+        /// </summary>
+        [HttpGet("subjects")]
+        public Task<IReadOnlyList<Subject>> Subjects(CancellationToken ct) => vocabulary.GetSubjectsAsync(ct);
+
+        /// <summary>GenerateVocabulary: devolve todas as páginas; o cliente faz Anterior/Próximo/Repetir.</summary>
+        [HttpPost("sessions")]
+        public async Task<ActionResult<VocabularySession>> Generate(GenerateVocabularyRequest request, CancellationToken ct)
+        {
+            var session = await vocabulary.GenerateAsync(User.UserId(), request.SubjectId, request.ToJapanese, request.Mistakes, ct: ct);
+            if (session is null)
+                return NotFound(Core.Response.Fail("Assunto não encontrado."));
+
+            await Log("Gerar lista", session.Subject + (request.Mistakes ? " mistakes" : ""), ct);
+            return session;
         }
 
-        private UserManager UserMng
+        [HttpPost("check")]
+        public async Task<ActionResult<IReadOnlyList<VocabularyResult>>> Check(CheckVocabularyRequest request, CancellationToken ct)
         {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
+            if (request.Answers is not { Count: > 0 } || request.Answers.Count > VocabularyService.PageSize)
+                return BadRequest(Core.Response.Fail($"Envie de 1 a {VocabularyService.PageSize} respostas."));
 
-                return Session["UserManager"] as UserManager;
-            }
+            var results = await vocabulary.CheckAnswersAsync(User.UserId(), request.Subject, request.ToJapanese, request.Answers, ct);
+            await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
+            return Ok(results);
         }
 
-        private VocabularyManager VocabylaryMng
+        /// <summary>Registra navegação feita no cliente (Proxima pagina, Pagina anterior, Repetir lista).</summary>
+        [HttpPost("interactions")]
+        public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
         {
-            get
-            {
-                if (Session["VocabularyManager"] == null)
-                    Session["VocabularyManager"] = new VocabularyManager();
-
-                return Session["VocabularyManager"] as VocabularyManager;
-            }
+            await Log(request.Action, request.Option, ct);
+            return NoContent();
         }
 
-        #endregion
-
-        #region Register
-        
-        [Authorize(Roles = "Administrator, Teacher")]
-        public ActionResult Register(int id = 0)
+        [HttpGet("words/{id:int}/{media:regex(^(image|audio)$)}/{slot:int:range(1,3)}")]
+        public async Task<IActionResult> Media(int id, string media, int slot, CancellationToken ct)
         {
-            var mdl = new MVocabulary();
-            mdl.Subjects = this.VocabylaryMng.Subjects();
-            if(id != 0)
-                mdl.Word = this.VocabylaryMng.GetWord(id);
+            var kind = media == "image" ? VocabularyMedia.Image : VocabularyMedia.Audio;
+            var bytes = await vocabulary.GetMediaAsync(id, kind, slot, ct);
+            if (bytes is null)
+                return NotFound();
 
-            return View(mdl);
+            return File(bytes, kind == VocabularyMedia.Image ? "image/jpeg" : "audio/mpeg");
         }
 
-        [Authorize(Roles = "Administrator, Teacher")]
-        [HttpPost]
-        public JsonResult AddWord(TWord word, HttpPostedFileBase file1, HttpPostedFileBase file2, HttpPostedFileBase file3, HttpPostedFileBase file4, HttpPostedFileBase file5, HttpPostedFileBase file6)
+        // ---- Cadastro (Administrator, Teacher) ----
+
+        [HttpGet("words/{id:int}")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TWord>> GetWord(int id, CancellationToken ct) =>
+            await vocabulary.GetWordAsync(id, ct) is { } word ? word : NotFound();
+
+        [HttpGet("words")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TWord>> SearchWord([FromQuery] string kana, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(word.Kana)) return Json(false);
-            if (string.IsNullOrWhiteSpace(word.Romaji)) return Json(false);
-
-            //Possibilidade 1
-            if (word.SubjectID1 <= 0) return Json(false);
-            if (string.IsNullOrWhiteSpace(word.Word1)) return Json(false);
-
-            if ((!string.IsNullOrWhiteSpace(word.KanjiWord2) || !(word.SubjectID2 > 0) || !string.IsNullOrWhiteSpace(word.Word2)) &&
-                (!string.IsNullOrWhiteSpace(word.KanjiWord2) && !(word.SubjectID2 <= 0) && !string.IsNullOrWhiteSpace(word.Word2))) {
-                if (word.SubjectID2 <= 0) return Json(false);
-                if (string.IsNullOrWhiteSpace(word.Word2)) return Json(false);
-            }
-            
-            if ((!string.IsNullOrWhiteSpace(word.KanjiWord3) || !(word.SubjectID3 > 0) || !string.IsNullOrWhiteSpace(word.Word3)) &&
-                (!string.IsNullOrWhiteSpace(word.KanjiWord3) && !(word.SubjectID3 > 0) && !string.IsNullOrWhiteSpace(word.Word3))) {
-                if (word.SubjectID3 <= 0) return Json(false);
-                if (string.IsNullOrWhiteSpace(word.Word3)) return Json(false);
-            }
-            
-            if(file1 != null)
-                word.Image1 = file1.InputStream.ToByteArray();
-            if(file2 != null)
-                word.Image2 = file2.InputStream.ToByteArray();
-            if(file3 != null)
-                word.Image3 = file3.InputStream.ToByteArray();
-            if(file4 != null)
-                word.Audio1 = file4.InputStream.ToByteArray();
-            if(file5 != null)
-                word.Audio2 = file5.InputStream.ToByteArray();
-            if(file6 != null)
-                word.Audio3 = file6.InputStream.ToByteArray();
-
-            if(word.ID == 0)
-                this.VocabylaryMng.AddWord(word);
-            else
-                this.VocabylaryMng.UpdateWord(word);
-
-            return Json(true);
+            if (string.IsNullOrWhiteSpace(kana))
+                return BadRequest();
+            return await vocabulary.GetWordByKanaAsync(kana, ct) is { } word ? word : NotFound();
         }
 
-        [Authorize(Roles = "Administrator, Teacher")]
-        [HttpPost]
-        public JsonResult GetWord(string search)
+        [HttpPost("words")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        [RequestSizeLimit(20 * 1024 * 1024)]
+        public async Task<ActionResult<Response>> SaveWord([FromForm] WordForm form, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(search)) return Json(false);
-
-            var word = this.VocabylaryMng.GetWord(search);
-
-            if(word == null)
-                return Json(false);
-
-            return Json(word);
+            var response = await vocabulary.SaveWordAsync(form.ToWord(), ct);
+            return response.OK ? response : BadRequest(response);
         }
 
-        #endregion
-
-        #region Translation
-
-        #region Private Methods
-
-        //private void ApplyCorrectionToCurrentLanguage(TextBox textBox, int currentIndex)
-        //{
-        //    if (currentIndex >= this.CurrentVocabularyList.Count)
-        //        return;
-
-        //    bool result = true;
-
-        //    var word = this.CurrentVocabularyList[currentIndex];
-
-        //    if (!word.CheckTranslatedWord(this.cbxSubject.Text, textBox.Text))
-        //    {
-        //        textBox.Text += string.Format(" ( {0} )", word.GetCurrentLanguageWord(this.cbxSubject.Text).Replace(",", ", "));
-        //        textBox.ForeColor = OptionsManager.Instance.Options.CorrectionColor;
-
-        //        this._allCorrect = false;
-        //        result = false;
-        //    }
-
-        //    this.VocabylaryMng.ManageMistake(this.CurrentVocabularyList[currentIndex], result);
-        //}
-
-        //private void ApplyCorrectionToJapanese(Label label, TextBox textBox, int currentIndex)
-        //{
-        //    if (!label.Visible)
-        //        return;
-
-        //    string correctWords = this.VocabylaryMng.CheckJapaneseAnswer(label.Text, textBox.Text, this.cbxSubject.Text);
-
-        //    if (string.IsNullOrWhiteSpace(correctWords))
-        //    {
-        //        this.VocabylaryMng.ManageMistake(this.CurrentVocabularyList[currentIndex], true);
-        //        return;
-        //    }
-
-        //    this.VocabylaryMng.ManageMistake(this.CurrentVocabularyList[currentIndex], false);
-        //    textBox.Text += string.Format(" ( {0} )", correctWords);
-        //    textBox.ForeColor = Color.Red;
-        //    this._allCorrect = false;
-        //}
-
-        //private void CheckTranslationResults()
-        //{
-        //    if (rbtJapaneseToCurrentLanguage.Checked)
-        //    {
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer1, 0);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer2, 1);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer3, 2);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer4, 3);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer5, 4);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer6, 5);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer7, 6);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer8, 7);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer9, 8);
-        //        this.ApplyCorrectionToCurrentLanguage(this.txtAnswer10, 9);
-        //    }
-        //    else
-        //        if (rbtCurrentLanguageToJapanese.Checked)
-        //        {
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion1, this.txtAnswer1, 0);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion2, this.txtAnswer2, 1);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion3, this.txtAnswer3, 2);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion4, this.txtAnswer4, 3);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion5, this.txtAnswer5, 4);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion6, this.txtAnswer6, 5);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion7, this.txtAnswer7, 6);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion8, this.txtAnswer8, 7);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion9, this.txtAnswer9, 8);
-        //            this.ApplyCorrectionToJapanese(this.lblQuestion10, this.txtAnswer10, 9);
-        //        }
-
-        //    UserManager.Instance.UserCollection.Save();
-
-        //    if (this._allCorrect)
-        //        MessageBox.Show(
-        //            text: this._congratsText,
-        //            caption: this._congratsTitle,
-        //            buttons: MessageBoxButtons.OK,
-        //            icon: MessageBoxIcon.Information);
-
-        //    this.btnCheck.Enabled = false;
-
-        //    this._allCorrect = true;
-        //    this.ManageUI();
-        //}
-
-        #endregion
-
-        public ActionResult Index()
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Pagina inicial", null, HttpContext.Session.SessionID);
-
-            var mdl = new MVocabulary();
-            mdl.Subjects = this.VocabylaryMng.Subjects();
-
-            return View(mdl);
-        }
-
-        [HttpPost]
-        public ActionResult CheckAnswers(List<GWordAnswer> answers, bool toJapanese)
-        {
-            if (answers == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
-
-            var user = this.UserMng.GetUser(this.User.Identity.Name);
-
-            var result = this.VocabylaryMng.CheckAnswers(user.ID, answers, toJapanese);
-
-            //Registra interação do usuário
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Verificar respostas", result.Count(r => !r.Wrong) + " Acertos", HttpContext.Session.SessionID);
-
-            return View("TranslationItems", result);
-        }
-
-        [HttpPost]
-        public ActionResult GenerateVocabulary(string subject, bool toJapanese, bool mistakes)
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Gerar lista", subject + (mistakes ? " mistakes" : ""), HttpContext.Session.SessionID);
-
-            this.VocabylaryMng.GenerateVocabulary(user.ID, subject, mistakes);
-            var vocabulary = this.VocabylaryMng.NextPage(toJapanese);
-            return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
-        }
-
-        [HttpPost]
-        public ActionResult NextPage(bool toJapanese)
-        {
-            var vocabulary = this.VocabylaryMng.NextPage(toJapanese);
-            
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Proxima pagina", this.VocabylaryMng.CurrentPage.ToString(), HttpContext.Session.SessionID);
-
-            return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
-        }
-
-        [HttpPost]
-        public ActionResult PreviousPage(bool toJapanese)
-        {
-            var vocabulary = this.VocabylaryMng.PreviousPage(toJapanese);
-
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Proxima anterior", this.VocabylaryMng.CurrentPage.ToString(), HttpContext.Session.SessionID);
-
-            return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
-        }
-
-        [HttpPost]
-        public ActionResult ReloadVocabulary(bool toJapanese)
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de vocabulario", "Repetir lista", null, HttpContext.Session.SessionID);
-
-            var vocabulary = this.VocabylaryMng.ReloadVocabulary(toJapanese);
-            return View("TranslationItems", vocabulary.Select(t => new GWordAnswer() { Word = t, Answer = string.Empty }).ToList());
-        }
-
-        [HttpPost]
-        public JsonResult ShowPageStatus()
-        {
-            var pageStatus = this.VocabylaryMng.ShowPageStatus();
-            return Json(pageStatus);
-        }
-
-        #endregion
+        private Task Log(string action, string? option, CancellationToken ct) =>
+            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
     }
 }

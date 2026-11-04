@@ -1,150 +1,84 @@
-﻿using System.Linq;
-using System.Web.Mvc;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Grammar;
-using Nienow.Shinrikai.Grammar.Model;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
-using System;
-using Nienow.Shinrikai.Core;
 
 namespace Nienow.Shinrikai.Controllers
 {
-    public class GrammarController : Controller
+    /// <summary>Port de GrammarController (mapa adaptativo + cadastro).</summary>
+    [ApiController]
+    [Route("api/grammar")]
+    [Authorize]
+    public sealed class GrammarController(GrammarService grammar, UserService users, IMonitoringService monitoring) : ControllerBase
     {
-        #region Managers
+        private const string Screen = "Estudo de gramatica";
 
-        private GrammarManager GrammarMng
+        /// <summary>Index: o mapa, agrupado por nível, com cada conteúdo liberado ou não para o aluno.</summary>
+        [HttpGet]
+        public async Task<IReadOnlyList<GrammarMapGroup>> Map(CancellationToken ct)
         {
-            get
-            {
-                if (Session["GrammarManager"] == null)
-                    Session["GrammarManager"] = new GrammarManager();
-
-                return Session["GrammarManager"] as GrammarManager;
-            }
+            await Log("Pagina inicial", null, ct);
+            return await grammar.GetMapAsync(User.UserId(), await CurrentLevelAsync(ct), ct);
         }
 
-        private MonitoringManager MonitoringMng
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<TGrammar>> Get(int id, CancellationToken ct)
         {
-            get
-            {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
+            var item = await grammar.GetAsync(id, ct);
+            if (item is null)
+                return NotFound();
 
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
+            await Log("Selecao", id.ToString(), ct);
+            return item;
         }
 
-        private UserManager UserMng
+        [HttpGet("{id:int}/requisites")]
+        public async Task<ActionResult<GrammarRequisites>> Requisites(int id, CancellationToken ct)
         {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
-
-                return Session["UserManager"] as UserManager;
-            }
+            await Log("Ver requisitos", id.ToString(), ct);
+            return await grammar.GetRequisitesAsync(id, await CurrentLevelAsync(ct), ct) is { } r ? r : NotFound();
         }
 
-        #endregion
-
-        #region Register
-
-        [Authorize(Roles = "Administrator, Teacher")]
-        [ValidateInput(false)]
-        [HttpPost]
-        public JsonResult AddGrammar(int id, string title, string level, string body, int[] requisites)
+        /// <summary>Chamado pelo front após 20 s de leitura (AdaptiveMap.ReadingTimeToDeclareKnowledge).</summary>
+        [HttpPost("{id:int}/knowledge")]
+        public async Task<IActionResult> DeclareKnowledge(int id, CancellationToken ct)
         {
-            this.GrammarMng.AddGrammar(id, title, level, body, requisites);
-
-            return Json(true);
+            await grammar.DeclareKnowledgeAsync(User.UserId(), id, ct);
+            return NoContent();
         }
 
-        [Authorize(Roles = "Administrator, Teacher")]
-        [HttpPost]
-        public JsonResult ListAllGrammars(EJLPT? jlpt)
-        {
-            var grammarList = this.GrammarMng.ListAllGrammars(jlpt);
-            return Json(grammarList.Select(g => new { Key = g.Key, Value = g.Value }));
-        }
+        // ---- Cadastro (Administrator, Teacher) ----
 
-        [Authorize(Roles = "Administrator, Teacher")]
-        public ActionResult Register(int id = 0)
-        {
-            TGrammar grammar;
-            if (id == 0)
-                grammar = new TGrammar();
-            else
-                grammar = this.GrammarMng.GetGrammar(id);
+        /// <summary>ListAllGrammars: conteúdos de um nível, para escolher pré-requisitos.</summary>
+        [HttpGet("all")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public Task<IReadOnlyList<GrammarSummary>> ListAll([FromQuery] EJLPT? jlpt, CancellationToken ct) =>
+            grammar.ListByLevelAsync(jlpt, ct);
 
-            return View(grammar);
-        }
-
-        #endregion
-
-        public ActionResult Index()
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de gramatica", "Pagina inicial", null, Session.SessionID);
-
-            var grammarList = this.GrammarMng.ListGrammars(user.ID, user.JLPT);
-            grammarList = grammarList.OrderBy(l => l[0].Grammar.Level).ToList();
-
-            return View(grammarList);
-        }
+        [HttpGet("{id:int}/edit")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TGrammar>> GetForEdit(int id, CancellationToken ct) =>
+            await grammar.GetAsync(id, ct) is { } item ? item : NotFound();
 
         [HttpPost]
-        public ActionResult DeclareKnowledge(int id)
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<Core.Response>> Save(GrammarForm form, CancellationToken ct)
         {
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.GrammarMng.DeclareKnowledge(user.ID, id);
-
-            return Json(true);
+            var response = await grammar.SaveAsync(form, ct);
+            return response.OK ? response : BadRequest(response);
         }
 
-        [HttpPost]
-        public JsonResult GetGrammar(int id)
-        {
-            var grammar = this.GrammarMng.GetGrammar(id);
+        /// <summary>O nível vem do banco (não do token), para refletir alterações sem novo login.</summary>
+        private async Task<EJLPT> CurrentLevelAsync(CancellationToken ct) =>
+            (await users.GetUserAsync(User.Identity!.Name!, ct))?.JLPT ?? User.Jlpt();
 
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de gramatica", "Selecao", id.ToString(), Session.SessionID);
-
-            return Json(grammar);
-        }
-
-        [HttpPost]
-        public string GetRequisites(int id)
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Estudo de gramatica", "Ver requisitos", id.ToString(), Session.SessionID);
-
-            var grammar = this.GrammarMng.GetGrammar(id);
-
-            var hasEnoughLevel = this.GrammarMng.HasEnoughLevel(user.JLPT, grammar.Level);
-
-            if (!hasEnoughLevel)
-            {
-                Response.ContentType = "html";
-                return "Conteúdo ainda não disponível.";
-            }
-
-            var msg = "Conteúdo não disponível, para tal deve-se primeiramente estudar os seguintes conteúdos:";
-            msg += "<ul>";
-
-            foreach (var requisiteId in grammar.Requisites)
-            {
-                var requisite = this.GrammarMng.GetGrammar(requisiteId);
-                msg += "<li>" + requisite.Title + "</li>";
-            }
-
-            msg += "</ul>";
-
-            Response.ContentType = "html";
-            return msg;
-        }
+        private Task Log(string action, string? option, CancellationToken ct) =>
+            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
     }
 }

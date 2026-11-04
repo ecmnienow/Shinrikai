@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Kestrel": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__ShinrikaiDB": "character set=UTF8;initial catalog=D:\\Projetos\\Shinrikai\\database\\data\\SHINRIKAI.FDB;data source=localhost;port=3050;dialect=3;user id=SYSDBA;password=masterkey"
+      }
+    }
+  }
+}

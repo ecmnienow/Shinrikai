@@ -1,14 +1,16 @@
-﻿using System;
+using System;
 
 namespace Nienow.Helper
 {
+    /// <summary>
+    /// Contador de acertos/erros de um item monitorado (palavra, kanji, exercício).
+    /// Portado 1:1 de Nienow.Helper/Monitor.cs. <c>ID == -1</c> indica registro ainda não persistido.
+    /// </summary>
     public class Monitor
     {
-        #region Constructors
-
         public Monitor()
         {
-            this.ID = -1;
+            ID = -1;
             UsrID = -1;
             VcbID = -1;
             SuccessCounter = 0;
@@ -17,23 +19,15 @@ namespace Nienow.Helper
             LastHittedTime = DateTime.MinValue;
         }
 
-        public Monitor(int monitoredItemIndex)
-        {
-            this.ID = monitoredItemIndex;
-        }
-
-        #endregion
-
-        #region Attributes and Properties
-
         public int ID { get; set; }
         public int UsrID { get; set; }
+        /// <summary>ID do item monitorado (palavra, kanji ou exercício, conforme a tabela).</summary>
         public int VcbID { get; set; }
         public int FailCounter { get; set; }
         public int Counter { get; set; }
         public int SuccessCounter { get; set; }
         public DateTime LastHittedTime { get; set; }
 
-        #endregion
+        public bool IsNew => ID == -1;
     }
 }

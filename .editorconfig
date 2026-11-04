@@ -1,0 +1,15 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+charset = utf-8
+insert_final_newline = true
+
+# Namespaces sempre em bloco: namespace X { ... }
+csharp_style_namespace_declarations = block_scoped:warning
+dotnet_diagnostic.IDE0160.severity = warning
+
+# Usings explícitos (ImplicitUsings desligado), System.* primeiro
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning

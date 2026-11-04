@@ -1,148 +1,77 @@
-﻿using System;
-using System.Web.Mvc;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.Text;
-using Nienow.Shinrikai.Text.Model;
 using Nienow.Shinrikai.User;
-using System.Text.RegularExpressions;
-using System.Diagnostics;
-using System.Linq;
 
 namespace Nienow.Shinrikai.Controllers
 {
-    public class TextController : Controller
+    /// <summary>Port de TextController (leitura com stretchtext + cadastro).</summary>
+    [ApiController]
+    [Route("api/texts")]
+    [Authorize]
+    public sealed class TextController(TextService texts, UserService users, IMonitoringService monitoring) : ControllerBase
     {
-        #region Managers
+        private const string Screen = "Leitura de textos";
 
-        private MonitoringManager MonitoringMng
+        [HttpGet]
+        public async Task<IReadOnlyList<TextListGroup>> List(CancellationToken ct)
         {
-            get
-            {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
-
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
+            await Log("Pagina inicial", null, ct);
+            var level = (await users.GetUserAsync(User.Identity!.Name!, ct))?.JLPT ?? User.Jlpt();
+            return await texts.ListAsync(level, ct);
         }
 
-        private TextManager TextMng
+        /// <summary>GetText: corpo com furigana escondida conforme o conhecimento do aluno.</summary>
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<TText>> Get(int id, CancellationToken ct)
         {
-            get
-            {
-                if (Session["TextManager"] == null)
-                    Session["TextManager"] = new TextManager();
+            var text = await texts.GetForReadingAsync(id, User.UserId(), ct);
+            if (text is null)
+                return NotFound();
 
-                return Session["TextManager"] as TextManager;
-            }
+            await Log("Selecao", id.ToString(), ct);
+            return text;
         }
 
-        private UserManager UserMng
+        /// <summary>Chamado pelo front após 20 s de leitura.</summary>
+        [HttpPost("{id:int}/knowledge")]
+        public async Task<IActionResult> DeclareKnowledge(int id, CancellationToken ct)
         {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
-
-                return Session["UserManager"] as UserManager;
-            }
+            await texts.DeclareKnowledgeAsync(User.UserId(), id, ct);
+            return NoContent();
         }
 
-        #endregion
-
-        #region Register
-
-        [Authorize(Roles = "Administrator, Teacher")]
-        public ActionResult Register(int id = 0)
+        /// <summary>O aluno clicou numa palavra para ver a furigana (não a conhecia).</summary>
+        [HttpPost("words/{wordId:int}/lack-of-knowledge")]
+        public async Task<IActionResult> RegisterLackOfKnowledge(int wordId, CancellationToken ct)
         {
-            var text = id == 0 ? new TText() : this.TextMng.GetText(id);
-            return View(text);
+            await Log("Desconhecimento de palavra", wordId.ToString(), ct);
+            await texts.RegisterLackOfKnowledgeAsync(User.UserId(), wordId, ct);
+            return NoContent();
         }
 
-        [Authorize(Roles = "Administrator, Teacher")]
-        [ValidateInput(false)]
-        [HttpPost]
-        public JsonResult AddText(int id, string title, string level, string body)
-        {
-            if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(body))
-                return Json(false);
+        // ---- Cadastro (Administrator, Teacher) ----
 
-            if (id == 0)
-                this.TextMng.AddText(title, level, body);
-            else
-                this.TextMng.UpdateText(id, title, level, body);
-
-            return Json(true);
-        }
-
-        #endregion
-
-        #region Reading
-
-        public ActionResult Index()
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de textos", "Pagina inicial", null, Session.SessionID);
-
-            var textList = this.TextMng.ListTexts(user.ID, user.JLPT);
-            textList = textList.OrderBy(l => l[0].Text.Level).ToList();
-
-            return View(textList);
-        }
-        
-        [HttpPost]
-        public ActionResult DeclareKnowledge(int id)
-        {
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.TextMng.DeclareKnowledge(user.ID, id);
-
-            return Json(true);
-        }
+        [HttpGet("{id:int}/edit")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TText>> GetForEdit(int id, CancellationToken ct) =>
+            await texts.GetForEditingAsync(id, ct) is { } text ? text : NotFound();
 
         [HttpPost]
-        public JsonResult GetText(int id)
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<Core.Response>> Save(TextForm form, CancellationToken ct)
         {
-            var text = this.TextMng.GetText(id);
-
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de textos", "Selecao", id.ToString(), Session.SessionID);
-
-            var regex = new Regex("<span class=\"stretchText\" data-id=\"([0-9]{0,})\">.*?<rt\\s{0,}>.*?<\\/rt>.*?<\\/span>");
-
-            foreach (Match grp in regex.Matches(text.Body))
-            {
-                var newText = grp.Groups[0].Value;
-
-                if (string.IsNullOrEmpty(grp.Groups[1].Value))
-                {
-                    Trace.TraceWarning(@"Streatch text missing word referenced ID. => {0}", newText);
-                    continue;
-                }
-
-                var wordId = Convert.ToInt32(grp.Groups[1].Value);
-
-                if (this.TextMng.UserHasWordKnowledge(user.ID, wordId) || this.TextMng.UnknownStatus(user.ID, wordId))
-                    newText = newText.Replace("<rt>", "<rt style=\"display: none;\">");
-
-                text.Body = text.Body.Replace(grp.Groups[0].Value, newText);
-            }
-
-            return Json(text);
+            var response = await texts.SaveAsync(form, ct);
+            return response.OK ? response : BadRequest(response);
         }
 
-        [HttpPost]
-        public JsonResult RegisterLackOfKnowledge(int wordId)
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de textos", "Desconhecimento de palavra", wordId.ToString(), HttpContext.Session.SessionID);
-
-            this.TextMng.RegisterLackOfKnowledge(user.ID, wordId);
-
-            return Json(true);
-        }
-
-        #endregion
+        private Task Log(string action, string? option, CancellationToken ct) =>
+            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
     }
 }
