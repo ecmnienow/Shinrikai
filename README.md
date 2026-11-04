@@ -102,7 +102,7 @@ para respeitar `X-Forwarded-For`/`X-Forwarded-Proto`. Publicação:
 
 `database/` cria o banco no Firebird local com o mesmo esquema do original (16 tabelas, 15
 generators), os textos de ajuda e uma lista inicial de assuntos, e grava a connection string no
-perfil `Kestrel` do `launchSettings.json` (que o Visual Studio e o `dotnet run` aplicam ao processo)
+perfil `Shinrikai` do `launchSettings.json` (que o Visual Studio e o `dotnet run` aplicam ao processo)
 e em user-secrets — sem alterar código. Para apontar para outro banco depois:
 `.\database\configure-connection.ps1 -Path <arquivo.fdb>`.
 

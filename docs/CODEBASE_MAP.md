@@ -181,7 +181,7 @@ que são o que os testes cobrem.
 | `ApiExceptionHandler.cs` | `DatabaseUnavailableException` → 503 com explicação; demais → 500 (detalhe só em Development) | 563 |
 | `Auth/JwtTokenService.cs` | `JwtOptions`, emissão HMAC-SHA256 (480 min), claims `jlpt` e `shinrikai_session`, `User.UserId()/Jlpt()/SessionId()` | 874 |
 | `Controllers/*.cs` | 9 controllers, 40 endpoints; cada um tem um `Log` que grava em INTERACTIONS | ~7.800 |
-| `appsettings*.json`, `Properties/launchSettings.json` | Kestrel `http://localhost:5080`, `ReverseProxy:Enabled`, `Jwt:*`, connection string (perfil `Kestrel`) | ~300 |
+| `appsettings*.json`, `Properties/launchSettings.json` | Kestrel `http://localhost:5080`, `ReverseProxy:Enabled`, `Jwt:*`, connection string (perfil `Shinrikai`) | ~300 |
 
 **DI:** `TimeProvider`, `IShinrikaiDb`, `JwtTokenService`, `IMonitorStore` e `IKnowledgeStore` são
 singletons. Repositórios e serviços são scoped. Enums trafegam como string (`JsonStringEnumConverter`).
@@ -238,7 +238,7 @@ de banco. Rodar: `dotnet test Nienow.Shinrikai.sln`; são 2641 testes.
 | `schema.sql` | 15 generators e 16 tabelas, reconstruídos a partir do SQL legado (Firebird 3/4/5, dialeto 3, UTF8) |
 | `seed.sql` | notificações de ajuda 1, 3, 4, 5, 6, 7 e 11 assuntos de vocabulário (não cria usuários) |
 | `create-database.ps1` | cria `database/data/SHINRIKAI.FDB` via `isql -i`, roda schema e seed, chama `configure-connection.ps1` |
-| `configure-connection.ps1` | grava `ConnectionStrings__ShinrikaiDB` no perfil `Kestrel` do `launchSettings.json` e em user-secrets |
+| `configure-connection.ps1` | grava `ConnectionStrings__ShinrikaiDB` no perfil `Shinrikai` do `launchSettings.json` e em user-secrets |
 | `promote-user.ps1` | define `USERS.USR_TYPE` (A, T ou nulo) de um login |
 
 ## Fluxos de dados
@@ -372,8 +372,8 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
    - `appsettings*.json` tem uma chave JWT de desenvolvimento.
    - O `launchSettings.json` tem a connection string do banco local com a senha padrão do Firebird.
    - Em produção, use `Jwt__Key` e `ConnectionStrings__ShinrikaiDB` por variável de ambiente.
-10. **Connection string:** o perfil `Kestrel` do `launchSettings.json` tem prioridade sobre user-secrets.
-    Rode a API com esse perfil (`--launch-profile Kestrel`) ou configure por user-secrets/variável.
+10. **Connection string:** o perfil `Shinrikai` do `launchSettings.json` tem prioridade sobre user-secrets.
+    Rode a API com esse perfil (`--launch-profile Shinrikai`) ou configure por user-secrets/variável.
 11. **Banco antigo é ODS 11.2 (Firebird 2.5)**: o Firebird 4 não abre. Converta com `gbak` (backup no 2.5,
     restore no 4). `ShinrikaiDB.Explain` reconhece esse erro, Legacy_Auth, senha errada, arquivo e rede.
 12. **`MonitorStore.SaveAsync` lê e depois insere sem lock.** Dois primeiros acertos simultâneos do mesmo

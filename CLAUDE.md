@@ -26,7 +26,7 @@ em `tests/Nienow.Shinrikai.Tests/Legacy` (não refatore essas cópias).
 
 **Comandos:**
 - Testes: `dotnet test Nienow.Shinrikai.sln`.
-- API: `dotnet run --project Nienow.Shinrikai --launch-profile Kestrel` (porta 5080).
+- API: `dotnet run --project Nienow.Shinrikai --launch-profile Shinrikai` (porta 5080).
 - Front: `npm --prefix web run dev` (porta 5173).
 - Banco local: `database/create-database.ps1`.
 
