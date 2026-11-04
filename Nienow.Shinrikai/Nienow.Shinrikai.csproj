@@ -3,8 +3,8 @@
     <UserSecretsId>nienow-shinrikai-api</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nienow.Shinrikai.Core\Nienow.Shinrikai.Core.csproj" />
@@ -12,6 +12,11 @@
     <ProjectReference Include="..\Nienow.Shinrikai.User\Nienow.Shinrikai.User.csproj" />
     <ProjectReference Include="..\Nienow.Shinrikai.Vocabulary\Nienow.Shinrikai.Vocabulary.csproj" />
     <ProjectReference Include="..\Nienow.Shinrikai.Monitoring\Nienow.Shinrikai.Monitoring.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Kanji\Nienow.Shinrikai.Kanji.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Grammar\Nienow.Shinrikai.Grammar.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Text\Nienow.Shinrikai.Text.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Exercises\Nienow.Shinrikai.Exercises.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Dictionary\Nienow.Shinrikai.Dictionary.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Nienow.Shinrikai.Tests" />

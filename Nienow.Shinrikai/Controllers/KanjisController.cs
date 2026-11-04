@@ -1,212 +1,116 @@
-﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Web;
-using System.Web.Mvc;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nienow.Helper;
+using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Kanji;
-using Nienow.Shinrikai.Kanji.Model;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
 
 namespace Nienow.Shinrikai.Controllers
 {
-    public class KanjisController : Controller
+    public sealed record GenerateKanjiRequest(string Level, bool Mistakes);
+
+    public sealed record CheckKanjiRequest(IReadOnlyList<KanjiAnswer> Answers);
+
+    public sealed class KanjiForm
     {
-        #region Managers
+        public int ID { get; set; }
+        public string? KanjiLetter { get; set; }
+        public string? Kana { get; set; }
+        public string? Romaji { get; set; }
+        public string? JLPT { get; set; }
+        public string? Info { get; set; }
+        public IFormFile? Image { get; set; }
 
-        private KanjiManager KanjiMng
+        public TKanji ToKanji()
         {
-            get
+            byte[]? image = null;
+            if (Image is { Length: > 0 })
             {
-                if (Session["KanjiManager"] == null)
-                    Session["KanjiManager"] = new KanjiManager();
-
-                return Session["KanjiManager"] as KanjiManager;
+                using var stream = Image.OpenReadStream();
+                image = stream.ToByteArray();
             }
-        }
 
-        private MonitoringManager MonitoringMng
-        {
-            get
+            return new TKanji
             {
-                if (Session["MonitoringManager"] == null)
-                    Session["MonitoringManager"] = new MonitoringManager();
+                ID = ID,
+                KanjiLetter = KanjiLetter?.Trim(),
+                Kana = Kana,
+                Romaji = Romaji,
+                JLPT = JLPT,
+                Info = Info,
+                Image = image,
+            };
+        }
+    }
 
-                return Session["MonitoringManager"] as MonitoringManager;
-            }
+    /// <summary>Port de KanjisController (leitura de kanjis + cadastro).</summary>
+    [ApiController]
+    [Route("api/kanjis")]
+    [Authorize]
+    public sealed class KanjisController(KanjiService kanjis, IMonitoringService monitoring) : ControllerBase
+    {
+        private const string Screen = "Leitura de kanjis";
+
+        [HttpPost("sessions")]
+        public async Task<ActionResult<KanjiSession>> Generate(GenerateKanjiRequest request, CancellationToken ct)
+        {
+            if (KanjiLevels.Normalize(request.Level) is not { } level || !KanjiLevels.All.Contains(level))
+                return BadRequest(Core.Response.Fail("Nível inválido."));
+
+            await Log("Gerar lista", level + (request.Mistakes ? " mistakes" : ""), ct);
+            return await kanjis.GenerateAsync(User.UserId(), level, request.Mistakes, ct: ct);
         }
 
-        private UserManager UserMng
+        [HttpPost("check")]
+        public async Task<ActionResult<IReadOnlyList<KanjiResult>>> Check(CheckKanjiRequest request, CancellationToken ct)
         {
-            get
-            {
-                if (Session["UserManager"] == null)
-                    Session["UserManager"] = new UserManager();
+            if (request.Answers is not { Count: > 0 } || request.Answers.Count > KanjiService.PageSize)
+                return BadRequest(Core.Response.Fail($"Envie de 1 a {KanjiService.PageSize} respostas."));
 
-                return Session["UserManager"] as UserManager;
-            }
+            var results = await kanjis.CheckAnswersAsync(User.UserId(), request.Answers, ct);
+            await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
+            return Ok(results);
         }
 
-        #endregion
-
-        #region Register
-
-        [Authorize(Roles = "Administrator, Teacher")]
-        public ActionResult Register()
+        [HttpPost("interactions")]
+        public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
         {
-            return View();
+            await Log(request.Action, request.Option, ct);
+            return NoContent();
         }
 
-        [Authorize(Roles = "Administrator, Teacher")]
-        [HttpPost]
-        public JsonResult AddKanji(TKanji kanji, HttpPostedFileBase file)
+        [HttpGet("{id:int}/image")]
+        public async Task<IActionResult> Image(int id, CancellationToken ct) =>
+            await kanjis.GetImageAsync(id, ct) is { } bytes ? File(bytes, "image/jpeg") : NotFound();
+
+        // ---- Cadastro (Administrator, Teacher) ----
+
+        [HttpGet]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TKanji>> Get([FromQuery] string letter, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(kanji.KanjiLetter) || kanji.KanjiLetter.Length != 1 ||
-                this.KanjiMng.GetKanji(kanji.KanjiLetter) != null || kanji.ID != 0)
-                return Json(false);
-
-            if (string.IsNullOrEmpty(kanji.Kana))
-                return Json(false);
-
-            if (string.IsNullOrEmpty(kanji.Romaji))
-                return Json(false);
-
-            if (string.IsNullOrEmpty(kanji.Info))
-                return Json(false);
-
-            if (file != null)
-                kanji.Image = file.InputStream.ToByteArray();
-
-            this.KanjiMng.AddKanji(kanji);
-
-            return Json(true);
-        }
-
-        [Authorize(Roles = "Administrator, Teacher")]
-        [HttpPost]
-        public JsonResult GetKanji(string kanjiLetter)
-        {
-            if (string.IsNullOrWhiteSpace(kanjiLetter))
-                throw new ArgumentException();
-
-            var kanji = this.KanjiMng.GetKanji(kanjiLetter);
-
-            if (kanji == null)
-                return Json(false);
-
-            return Json(kanji);
-        }
-
-        [Authorize(Roles = "Administrator, Teacher")]
-        [HttpPost]
-        public ActionResult UpdateKanji(TKanji kanji, HttpPostedFileBase file)
-        {
-            if (string.IsNullOrEmpty(kanji.KanjiLetter) || kanji.KanjiLetter.Length != 1 ||
-               this.KanjiMng.GetKanji(kanji.KanjiLetter) == null || kanji.ID == 0)
-                return Json(false);
-
-            if (string.IsNullOrEmpty(kanji.Kana))
-                return Json(false);
-
-            if (string.IsNullOrEmpty(kanji.Romaji))
-                return Json(false);
-
-            if (string.IsNullOrEmpty(kanji.Info))
-                return Json(false);
-
-            if (file != null)
-                kanji.Image = file.InputStream.ToByteArray();
-
-            this.KanjiMng.UpdateKanji(kanji);
-
-            return Json(true);
-        }
-
-        #endregion
-
-        #region Reading
-
-        public ActionResult Index()
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de kanjis", "Pagina inicial", null, HttpContext.Session.SessionID);
-
-            return View();
+            if (string.IsNullOrWhiteSpace(letter))
+                return BadRequest();
+            return await kanjis.GetByLetterAsync(letter, ct) is { } kanji ? kanji : NotFound(Core.Response.Fail("Kanji não encontrado!"));
         }
 
         [HttpPost]
-        public ActionResult CheckAnswers(List<GKanjiAnswer> answers)
+        [Authorize(Roles = Roles.ContentEditors)]
+        [RequestSizeLimit(20 * 1024 * 1024)]
+        public async Task<ActionResult<Core.Response>> Save([FromForm] KanjiForm form, CancellationToken ct)
         {
-            if (answers == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
-
-            var user = this.UserMng.GetUser(this.User.Identity.Name);
-
-            var result = this.KanjiMng.CheckAnswers(user.ID, answers);
-
-            //Registra interação do usuário
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de kanjis", "Verificar respostas", result.Count(r => !r.Wrong) + " Acertos", HttpContext.Session.SessionID);
-
-            return View("KanjisItems", result);
+            var response = await kanjis.SaveAsync(form.ToKanji(), ct);
+            return response.OK ? response : BadRequest(response);
         }
 
-        [HttpPost]
-        public ActionResult GenerateLists(string level, bool mistakes)
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de kanjis", "Gerar lista", level + (mistakes ? " mistakes" : ""), HttpContext.Session.SessionID);
-
-            this.KanjiMng.GenerateLists(user.ID, level, mistakes);
-            var kanjis = this.KanjiMng.NextPage();
-            return View("KanjisItems", kanjis.Select(t => new GKanjiAnswer(t)).ToList());
-        }
-
-        [HttpPost]
-        public ActionResult NextPage()
-        {
-            var kanjis = this.KanjiMng.NextPage();
-
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de Kanjis", "Proxima pagina", this.KanjiMng.CurrentPage.ToString(), HttpContext.Session.SessionID);
-
-            return View("KanjisItems", kanjis.Select(t => new GKanjiAnswer(t)).ToList());
-        }
-
-        [HttpPost]
-        public ActionResult PreviousPage()
-        {
-            var kanjis = this.KanjiMng.PreviousPage();
-
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de Kanjis", "Proxima anterior", this.KanjiMng.CurrentPage.ToString(), HttpContext.Session.SessionID);
-
-            return View("KanjisItems", kanjis.Select(t => new GKanjiAnswer(t)).ToList());
-        }
-
-        [HttpPost]
-        public ActionResult ReloadList()
-        {
-            //Registra interação do usuário
-            var user = this.UserMng.GetUser(User.Identity.Name);
-            this.MonitoringMng.AddMonitor(user.ID, "Leitura de Kanjis", "Repetir lista", null, HttpContext.Session.SessionID);
-
-            var kanjis = this.KanjiMng.ReloadList();
-            return View("KanjisItems", kanjis.Select(t => new GKanjiAnswer(t)).ToList());
-        }
-
-        [HttpPost]
-        public JsonResult ShowPageStatus()
-        {
-            var pageStatus = this.KanjiMng.ShowPageStatus();
-            return Json(pageStatus);
-        }
-
-        #endregion
+        private Task Log(string action, string? option, CancellationToken ct) =>
+            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
     }
 }

@@ -1,144 +1,150 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Nienow.Helper;
-using Monitor = Nienow.Helper.Monitor;
 using Nienow.Shinrikai.Auth;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
 using Nienow.Shinrikai.Vocabulary;
 using Nienow.Shinrikai.Vocabulary.Model;
+using Monitor = Nienow.Helper.Monitor;
 
-namespace Nienow.Shinrikai.Controllers;
-
-public sealed record GenerateVocabularyRequest(int SubjectId, bool ToJapanese, bool Mistakes);
-
-public sealed record CheckVocabularyRequest(string Subject, bool ToJapanese, IReadOnlyList<VocabularyAnswer> Answers);
-
-public sealed record InteractionRequest(string Action, string? Option);
-
-/// <summary>Formulário de cadastro: campos do TWord + até 3 imagens e 3 áudios.</summary>
-public sealed class WordForm
+namespace Nienow.Shinrikai.Controllers
 {
-    public int ID { get; set; }
-    public string? Kana { get; set; }
-    public string? Romaji { get; set; }
-    public int SubjectID1 { get; set; }
-    public int SubjectID2 { get; set; }
-    public int SubjectID3 { get; set; }
-    public string? KanjiWord1 { get; set; }
-    public string? KanjiWord2 { get; set; }
-    public string? KanjiWord3 { get; set; }
-    public string? Word1 { get; set; }
-    public string? Word2 { get; set; }
-    public string? Word3 { get; set; }
-    public IFormFile? Image1 { get; set; }
-    public IFormFile? Image2 { get; set; }
-    public IFormFile? Image3 { get; set; }
-    public IFormFile? Audio1 { get; set; }
-    public IFormFile? Audio2 { get; set; }
-    public IFormFile? Audio3 { get; set; }
+    public sealed record GenerateVocabularyRequest(int SubjectId, bool ToJapanese, bool Mistakes);
 
-    public TWord ToWord() => new()
+    public sealed record CheckVocabularyRequest(string Subject, bool ToJapanese, IReadOnlyList<VocabularyAnswer> Answers);
+
+    public sealed record InteractionRequest(string Action, string? Option);
+
+    /// <summary>Formulário de cadastro: campos do TWord + até 3 imagens e 3 áudios.</summary>
+    public sealed class WordForm
     {
-        ID = ID, Kana = Kana, Romaji = Romaji,
-        SubjectID1 = SubjectID1, SubjectID2 = SubjectID2, SubjectID3 = SubjectID3,
-        KanjiWord1 = KanjiWord1, KanjiWord2 = KanjiWord2, KanjiWord3 = KanjiWord3,
-        Word1 = Word1, Word2 = Word2, Word3 = Word3,
-        Image1 = Read(Image1), Image2 = Read(Image2), Image3 = Read(Image3),
-        Audio1 = Read(Audio1), Audio2 = Read(Audio2), Audio3 = Read(Audio3),
-    };
+        public int ID { get; set; }
+        public string? Kana { get; set; }
+        public string? Romaji { get; set; }
+        public int SubjectID1 { get; set; }
+        public int SubjectID2 { get; set; }
+        public int SubjectID3 { get; set; }
+        public string? KanjiWord1 { get; set; }
+        public string? KanjiWord2 { get; set; }
+        public string? KanjiWord3 { get; set; }
+        public string? Word1 { get; set; }
+        public string? Word2 { get; set; }
+        public string? Word3 { get; set; }
+        public IFormFile? Image1 { get; set; }
+        public IFormFile? Image2 { get; set; }
+        public IFormFile? Image3 { get; set; }
+        public IFormFile? Audio1 { get; set; }
+        public IFormFile? Audio2 { get; set; }
+        public IFormFile? Audio3 { get; set; }
 
-    private static byte[]? Read(IFormFile? file)
-    {
-        if (file is null || file.Length == 0) return null;
-        using var stream = file.OpenReadStream();
-        return stream.ToByteArray();
-    }
-}
+        public TWord ToWord() => new()
+        {
+            ID = ID, Kana = Kana, Romaji = Romaji,
+            SubjectID1 = SubjectID1, SubjectID2 = SubjectID2, SubjectID3 = SubjectID3,
+            KanjiWord1 = KanjiWord1, KanjiWord2 = KanjiWord2, KanjiWord3 = KanjiWord3,
+            Word1 = Word1, Word2 = Word2, Word3 = Word3,
+            Image1 = Read(Image1), Image2 = Read(Image2), Image3 = Read(Image3),
+            Audio1 = Read(Audio1), Audio2 = Read(Audio2), Audio3 = Read(Audio3),
+        };
 
-/// <summary>Port de VocabularyController (estudo + cadastro).</summary>
-[ApiController]
-[Route("api/vocabulary")]
-[Authorize]
-public sealed class VocabularyController(VocabularyService vocabulary, IMonitoringService monitoring) : ControllerBase
-{
-    private const string Screen = "Estudo de vocabulario";
-
-    [HttpGet("subjects")]
-    public async Task<IReadOnlyList<Subject>> Subjects(CancellationToken ct)
-    {
-        await Log("Pagina inicial", null, ct);
-        return await vocabulary.GetSubjectsAsync(ct);
+        private static byte[]? Read(IFormFile? file)
+        {
+            if (file is null || file.Length == 0) return null;
+            using var stream = file.OpenReadStream();
+            return stream.ToByteArray();
+        }
     }
 
-    /// <summary>GenerateVocabulary: devolve todas as páginas; o cliente faz Anterior/Próximo/Repetir.</summary>
-    [HttpPost("sessions")]
-    public async Task<ActionResult<VocabularySession>> Generate(GenerateVocabularyRequest request, CancellationToken ct)
+    /// <summary>Port de VocabularyController (estudo + cadastro).</summary>
+    [ApiController]
+    [Route("api/vocabulary")]
+    [Authorize]
+    public sealed class VocabularyController(VocabularyService vocabulary, IMonitoringService monitoring) : ControllerBase
     {
-        var session = await vocabulary.GenerateAsync(User.UserId(), request.SubjectId, request.ToJapanese, request.Mistakes, ct: ct);
-        if (session is null)
-            return NotFound(Core.Response.Fail("Assunto não encontrado."));
+        private const string Screen = "Estudo de vocabulario";
 
-        await Log("Gerar lista", session.Subject + (request.Mistakes ? " mistakes" : ""), ct);
-        return session;
+        /// <summary>
+        /// Assuntos (usado no estudo e no cadastro). O registro de "Pagina inicial" é feito pela tela
+        /// de estudo via /interactions, para o cadastro não contar como acesso ao estudo.
+        /// </summary>
+        [HttpGet("subjects")]
+        public Task<IReadOnlyList<Subject>> Subjects(CancellationToken ct) => vocabulary.GetSubjectsAsync(ct);
+
+        /// <summary>GenerateVocabulary: devolve todas as páginas; o cliente faz Anterior/Próximo/Repetir.</summary>
+        [HttpPost("sessions")]
+        public async Task<ActionResult<VocabularySession>> Generate(GenerateVocabularyRequest request, CancellationToken ct)
+        {
+            var session = await vocabulary.GenerateAsync(User.UserId(), request.SubjectId, request.ToJapanese, request.Mistakes, ct: ct);
+            if (session is null)
+                return NotFound(Core.Response.Fail("Assunto não encontrado."));
+
+            await Log("Gerar lista", session.Subject + (request.Mistakes ? " mistakes" : ""), ct);
+            return session;
+        }
+
+        [HttpPost("check")]
+        public async Task<ActionResult<IReadOnlyList<VocabularyResult>>> Check(CheckVocabularyRequest request, CancellationToken ct)
+        {
+            if (request.Answers is not { Count: > 0 } || request.Answers.Count > VocabularyService.PageSize)
+                return BadRequest(Core.Response.Fail($"Envie de 1 a {VocabularyService.PageSize} respostas."));
+
+            var results = await vocabulary.CheckAnswersAsync(User.UserId(), request.Subject, request.ToJapanese, request.Answers, ct);
+            await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
+            return Ok(results);
+        }
+
+        /// <summary>Registra navegação feita no cliente (Proxima pagina, Pagina anterior, Repetir lista).</summary>
+        [HttpPost("interactions")]
+        public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
+        {
+            await Log(request.Action, request.Option, ct);
+            return NoContent();
+        }
+
+        [HttpGet("words/{id:int}/{media:regex(^(image|audio)$)}/{slot:int:range(1,3)}")]
+        public async Task<IActionResult> Media(int id, string media, int slot, CancellationToken ct)
+        {
+            var kind = media == "image" ? VocabularyMedia.Image : VocabularyMedia.Audio;
+            var bytes = await vocabulary.GetMediaAsync(id, kind, slot, ct);
+            if (bytes is null)
+                return NotFound();
+
+            return File(bytes, kind == VocabularyMedia.Image ? "image/jpeg" : "audio/mpeg");
+        }
+
+        // ---- Cadastro (Administrator, Teacher) ----
+
+        [HttpGet("words/{id:int}")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TWord>> GetWord(int id, CancellationToken ct) =>
+            await vocabulary.GetWordAsync(id, ct) is { } word ? word : NotFound();
+
+        [HttpGet("words")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<TWord>> SearchWord([FromQuery] string kana, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(kana))
+                return BadRequest();
+            return await vocabulary.GetWordByKanaAsync(kana, ct) is { } word ? word : NotFound();
+        }
+
+        [HttpPost("words")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        [RequestSizeLimit(20 * 1024 * 1024)]
+        public async Task<ActionResult<Response>> SaveWord([FromForm] WordForm form, CancellationToken ct)
+        {
+            var response = await vocabulary.SaveWordAsync(form.ToWord(), ct);
+            return response.OK ? response : BadRequest(response);
+        }
+
+        private Task Log(string action, string? option, CancellationToken ct) =>
+            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
     }
-
-    [HttpPost("check")]
-    public async Task<ActionResult<IReadOnlyList<VocabularyResult>>> Check(CheckVocabularyRequest request, CancellationToken ct)
-    {
-        if (request.Answers is not { Count: > 0 } || request.Answers.Count > VocabularyService.PageSize)
-            return BadRequest(Core.Response.Fail($"Envie de 1 a {VocabularyService.PageSize} respostas."));
-
-        var results = await vocabulary.CheckAnswersAsync(User.UserId(), request.Subject, request.ToJapanese, request.Answers, ct);
-        await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
-        return Ok(results);
-    }
-
-    /// <summary>Registra navegação feita no cliente (Proxima pagina, Pagina anterior, Repetir lista).</summary>
-    [HttpPost("interactions")]
-    public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
-    {
-        await Log(request.Action, request.Option, ct);
-        return NoContent();
-    }
-
-    [HttpGet("words/{id:int}/{media:regex(^(image|audio)$)}/{slot:int:range(1,3)}")]
-    public async Task<IActionResult> Media(int id, string media, int slot, CancellationToken ct)
-    {
-        var kind = media == "image" ? VocabularyMedia.Image : VocabularyMedia.Audio;
-        var bytes = await vocabulary.GetMediaAsync(id, kind, slot, ct);
-        if (bytes is null)
-            return NotFound();
-
-        return File(bytes, kind == VocabularyMedia.Image ? "image/jpeg" : "audio/mpeg");
-    }
-
-    // ---- Cadastro (Administrator, Teacher) ----
-
-    [HttpGet("words/{id:int}")]
-    [Authorize(Roles = Roles.ContentEditors)]
-    public async Task<ActionResult<TWord>> GetWord(int id, CancellationToken ct) =>
-        await vocabulary.GetWordAsync(id, ct) is { } word ? word : NotFound();
-
-    [HttpGet("words")]
-    [Authorize(Roles = Roles.ContentEditors)]
-    public async Task<ActionResult<TWord>> SearchWord([FromQuery] string kana, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(kana))
-            return BadRequest();
-        return await vocabulary.GetWordByKanaAsync(kana, ct) is { } word ? word : NotFound();
-    }
-
-    [HttpPost("words")]
-    [Authorize(Roles = Roles.ContentEditors)]
-    [RequestSizeLimit(20 * 1024 * 1024)]
-    public async Task<ActionResult<Response>> SaveWord([FromForm] WordForm form, CancellationToken ct)
-    {
-        var response = await vocabulary.SaveWordAsync(form.ToWord(), ct);
-        return response.OK ? response : BadRequest(response);
-    }
-
-    private Task Log(string action, string? option, CancellationToken ct) =>
-        monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
 }
