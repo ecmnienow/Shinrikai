@@ -9,6 +9,9 @@ jobs:
   build:
     name: Build
     runs-on: windows-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,17 +57,30 @@ jobs:
           New-Item -Path .\.sonar\scanner -ItemType Directory
           dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
 
-      - name: Build, test and analyze
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+      # A análise do SonarQube depende de um servidor externo: se ele estiver fora do ar (ou os
+      # secrets não existirem), o build e os testes continuam valendo e só a análise é pulada.
+      # Um comando por step: o PowerShell só devolve o código de saída do último comando.
+      - name: SonarQube begin
+        id: sonar-begin
+        if: env.SONAR_TOKEN != ''
+        continue-on-error: true
         shell: powershell
-        run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"${{ secrets.SONAR_PROJECT_KEY }}" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}"
-          dotnet build Nienow.Shinrikai.sln -c Release
-          dotnet test Nienow.Shinrikai.sln -c Release --no-build
-          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+        run: .\.sonar\scanner\dotnet-sonarscanner begin /k:"${{ secrets.SONAR_PROJECT_KEY }}" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}"
+
+      - name: Build
+        run: dotnet build Nienow.Shinrikai.sln -c Release
+
+      - name: Test
+        run: dotnet test Nienow.Shinrikai.sln -c Release --no-build
+
+      - name: SonarQube end
+        if: steps.sonar-begin.outcome == 'success'
+        continue-on-error: true
+        shell: powershell
+        run: .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+
+      - name: Install web dependencies
+        run: npm --prefix web ci
 
       - name: Build web
-        run: |
-          npm --prefix web ci
-          npm --prefix web run build
+        run: npm --prefix web run build
