@@ -42,7 +42,7 @@ graph TB
         DB["DataBaseConn<br/>ShinrikaiDB, DbExtensions,<br/>MonitorStore, KnowledgeStore"]
         Helper["Helper<br/>Monitor, ShuffleList"]
     end
-    FDB[("Firebird 4<br/>SHINRIKAI.FDB")]
+    FDB[("Firebird 5<br/>SHINRIKAI_LEGADO.FDB")]
 
     SPA -- "fetch /api + Bearer" --> Ctl
     SPA -. "build → wwwroot" .-> Static
@@ -374,8 +374,8 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
    - Em produção, use `Jwt__Key` e `ConnectionStrings__ShinrikaiDB` por variável de ambiente.
 10. **Connection string:** o perfil `Shinrikai` do `launchSettings.json` tem prioridade sobre user-secrets.
     Rode a API com esse perfil (`--launch-profile Shinrikai`) ou configure por user-secrets/variável.
-11. **Banco antigo é ODS 11.2 (Firebird 2.5)**: o Firebird 4 não abre. Converta com `gbak` (backup no 2.5,
-    restore no 4). `ShinrikaiDB.Explain` reconhece esse erro, Legacy_Auth, senha errada, arquivo e rede.
+11. **Banco antigo é ODS 11.2 (Firebird 2.5)**: os Firebird 4 e 5 não abrem. Converta com `gbak` (backup no 2.5,
+    restore no 5). `ShinrikaiDB.Explain` reconhece esse erro, Legacy_Auth, senha errada, arquivo e rede.
 12. **`MonitorStore.SaveAsync` lê e depois insere sem lock.** Dois primeiros acertos simultâneos do mesmo
     usuário e item batem na constraint `UNIQUE(usuário, item)` e um deles falha com 500.
 13. **Dicionário carrega a tabela VOCABULARY inteira** a cada busca.

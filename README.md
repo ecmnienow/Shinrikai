@@ -117,21 +117,69 @@ O cadastro pela tela sempre cria alunos e não há tela de papéis nem de assunt
 "Controle de usuários" e "Cadastro de assuntos" estavam desativados no original) — para isso são
 `promote-user.ps1` e o `INSERT` comentado em `database/seed.sql`.
 
-### Banco antigo: conversão de ODS 11 → 13
+### Servidor Firebird
 
-Para usar os dados do sistema original em vez do banco novo: o `SHINRIKAI.FDB` existente é
-**ODS 11.2 (Firebird 2.5)**. O Firebird 4 recusa abrir
-(`unsupported on-disk structure … found 11.2, support 13.0`). É preciso um backup com o
-`gbak` do 2.5 e restore com o do 4:
+O projeto roda no **Firebird 5.0.4** (também funciona no 4.0), como serviço na porta 3050. O
+`firebird.conf` usa as mesmas configurações do servidor anterior, que outros sistemas da máquina
+esperam:
 
-```bash
-# com Firebird 2.5 (ex.: kit zip/embedded)
-gbak -b -user SYSDBA -password masterkey SHINRIKAI.FDB shinrikai.fbk
-# com Firebird 4
-gbak -c -user SYSDBA -password <senha> shinrikai.fbk SHINRIKAI_FB4.FDB
+```
+AuthServer = Srp256, Srp, Legacy_Auth
+UserManager = Srp, Legacy_UserManager
+WireCrypt = Enabled
+ServerMode = Super
 ```
 
-O esquema do banco não muda: o port usa as mesmas tabelas, colunas e generators do original.
+O Firebird 5 abre bancos do Firebird 4 (ODS 13.0) sem convertê-los, então eles continuam abrindo no 4.
+Para levar um banco ao formato do 5 (ODS 13.1), faça backup e restore com o `gbak` do 5. Os scripts de
+`database/` usam o `isql` da versão mais nova instalada em `C:\Program Files\Firebird`.
+
+### Banco antigo: conversão de ODS 11 → 13.1
+
+Para usar os dados do sistema original em vez do banco novo: o `SHINRIKAI.FDB` existente é
+**ODS 11.2 (Firebird 2.5)**. Os Firebird 4 e 5 recusam abrir
+(`unsupported on-disk structure … found 11.2`). É preciso um backup com o `gbak` do 2.5 e restore
+com o do servidor atual.
+
+Sem o Firebird 2.5 instalado, use o kit zip oficial
+([`Firebird-2.5.9.27139-0_x64.zip`](https://github.com/FirebirdSQL/firebird/releases/tag/R2_5_9), que
+não tem `fbembed.dll`) rodando o servidor como aplicação numa porta própria, sem conflitar com o
+servidor da porta 3050. Acrescente ao `firebird.conf` do kit:
+
+```
+RemoteServicePort = 3051
+IpcName = FIREBIRD25
+RemotePipeName = interbas25
+GuardianOption = 0
+```
+
+```bash
+# Firebird 2.5 (kit zip): servidor temporário e backup de uma CÓPIA do banco
+bin\fbserver.exe -a
+bin\gbak.exe -b -g -v -user SYSDBA -password masterkey localhost/3051:C:\copia\SHINRIKAI.FDB C:\copia\shinrikai.fbk
+# Firebird 5 (encerre o fbserver do 2.5 antes)
+"C:\Program Files\Firebird\Firebird_5_0\gbak.exe" -c -v -user SYSDBA -password <senha> C:\copia\shinrikai.fbk localhost/3050:D:\Projetos\Shinrikai\database\data\SHINRIKAI_LEGADO.FDB
+```
+
+Depois do restore, **iguale os generators aos maiores IDs**. O `DBText` original gravava em
+`TRL_MONITOR` com o `VOCMONITOR_ID_GEN`, então o `TRLCMONITOR_ID_GEN` fica atrás do maior `TMN_ID`
+(no banco de 2020: 89 contra 187) e a próxima gravação de transcrição colidiria com um ID existente.
+O banco original também não tem o `SUBJECTS_ID_GEN` usado pelo `seed.sql`:
+
+```sql
+SELECT GEN_ID(TRLCMONITOR_ID_GEN, 0), (SELECT MAX(TMN_ID) FROM TRL_MONITOR) FROM RDB$DATABASE;
+SET GENERATOR TRLCMONITOR_ID_GEN TO 187;   -- o MAX(TMN_ID) encontrado
+CREATE SEQUENCE SUBJECTS_ID_GEN;
+COMMIT;
+SET GENERATOR SUBJECTS_ID_GEN TO 37;       -- o MAX(SBJ_ID) encontrado
+COMMIT;
+```
+
+Por fim, aponte a API para o banco convertido:
+`.\database\configure-connection.ps1 -Path D:\Projetos\Shinrikai\database\data\SHINRIKAI_LEGADO.FDB`.
+
+O esquema do banco não muda: o port usa as mesmas tabelas, colunas e generators do original. O banco
+original já é UTF8, e o texto em japonês passa intacto pelo backup/restore.
 
 ## Editor (cadastros de Gramática e Texto)
 

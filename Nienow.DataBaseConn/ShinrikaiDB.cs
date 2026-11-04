@@ -66,8 +66,8 @@ namespace Nienow.DataBaseConn
         {
             var message = ex.Message;
             if (message.Contains("unsupported on-disk structure", StringComparison.OrdinalIgnoreCase))
-                return "O arquivo do banco está num formato antigo (Firebird 2.5, ODS 11) que o servidor Firebird 4 não abre. " +
-                       "Converta com gbak (backup no 2.5, restore no 4) — ver README. Detalhe: " + message;
+                return "O arquivo do banco está num formato antigo (Firebird 2.5, ODS 11) que o servidor Firebird atual não abre. " +
+                       "Converta com gbak (backup no 2.5, restore no servidor atual) — ver README. Detalhe: " + message;
             if (message.Contains("Legacy_Auth", StringComparison.OrdinalIgnoreCase))
                 return "O servidor Firebird recusou o usuário/senha pela autenticação SRP e tentou a antiga (Legacy_Auth), " +
                        "que o driver não suporta. Confira usuário e senha da connection string (o usuário precisa existir no SRP).";

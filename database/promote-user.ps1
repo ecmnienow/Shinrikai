@@ -15,10 +15,13 @@ param(
     [string]$Password = 'masterkey',
     [string]$Server = 'localhost',
     [int]$Port = 3050,
-    [string]$Isql = 'C:\Program Files\Firebird\Firebird_4_0\isql.exe'
+    # isql da versão mais nova do Firebird instalada (Firebird_5_0, Firebird_4_0...).
+    [string]$Isql = (Get-ChildItem 'C:\Program Files\Firebird\Firebird_*\isql.exe' -ErrorAction SilentlyContinue |
+        Sort-Object { [int]($_.Directory.Name -replace '\D', '') } | Select-Object -Last 1).FullName
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Isql -or -not (Test-Path $Isql)) { throw "isql do Firebird não encontrado ('$Isql'). Informe -Isql." }
 $type = @{ Administrator = "'A'"; Teacher = "'T'"; Student = 'NULL' }[$Role]
 $safeLogin = $Login.Replace("'", "''")
 $Path = (Resolve-Path $Path).Path

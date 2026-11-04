@@ -8,7 +8,7 @@ adaptatividade em `Nienow.Shinrikai.Core/Adaptive`, testadas 1:1 contra cópias 
 em `tests/Nienow.Shinrikai.Tests/Legacy` (não refatore essas cópias).
 
 **Stack:**
-- Backend: ASP.NET Core em Kestrel (API `/api`, JWT, Swagger), ADO.NET parametrizado sobre Firebird 4,
+- Backend: ASP.NET Core em Kestrel (API `/api`, JWT, Swagger), ADO.NET parametrizado sobre Firebird 5.0.4,
   xUnit.
 - Front: React 18 + Vite + TipTap 2.27.3.
 
