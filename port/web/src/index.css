@@ -1,0 +1,94 @@
+:root {
+  --bg: #f7f5f2;
+  --surface: #ffffff;
+  --text: #1f1d1a;
+  --muted: #6b665e;
+  --border: #ddd6cc;
+  --accent: #b3261e;
+  --accent-text: #ffffff;
+  --ok: #1e7b3a;
+  --ok-bg: #e8f5ec;
+  --err: #b3261e;
+  --err-bg: #fbeceb;
+  --code-bg: #f1eee9;
+  color-scheme: light dark;
+  font-family: system-ui, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171614;
+    --surface: #211f1c;
+    --text: #ece8e2;
+    --muted: #a39d93;
+    --border: #3a3631;
+    --accent: #e0574e;
+    --accent-text: #160c0b;
+    --ok: #6fd08f;
+    --ok-bg: #16281c;
+    --err: #ff8a80;
+    --err-bg: #2e1715;
+    --code-bg: #1b1a18;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+h1 { font-size: 1.6rem; margin: 0.5rem 0 1rem; }
+h2 { font-size: 1.1rem; margin: 0.5rem 0; }
+
+main { max-width: 1100px; margin: 0 auto; padding: 1rem 16px 3rem; }
+main.narrow { max-width: 640px; }
+
+.topbar {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: 0.6rem 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.topbar nav { display: flex; gap: 1rem; }
+.topbar a { color: var(--text); text-decoration: none; }
+.topbar a.active { color: var(--accent); font-weight: 600; }
+.brand { font-weight: 700; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+.stack { display: flex; flex-direction: column; gap: 0.75rem; }
+.row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.row.center { justify-content: center; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.notice { padding: 0.75rem 1rem; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
+.error { color: var(--err); margin: 0; }
+
+label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
+label.inline { flex-direction: row; align-items: center; gap: 0.35rem; }
+
+input, select, button {
+  font: inherit; color: inherit; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.65rem;
+}
+input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { cursor: pointer; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button[aria-pressed='true'] { background: var(--code-bg); border-color: var(--accent); }
+
+.word-row { display: grid; grid-template-columns: minmax(6rem, 30%) 1fr; gap: 0.5rem; align-items: center; }
+.word-row .prompt { text-align: right; font-size: 1.05rem; overflow-wrap: anywhere; }
+.word-row .expected { grid-column: 2; font-size: 0.85rem; color: var(--err); }
+.word-row.right input { border-color: var(--ok); background: var(--ok-bg); }
+.word-row.wrong input { border-color: var(--err); background: var(--err-bg); }
+
+.editor { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin-bottom: 1rem; }
+.toolbar { display: flex; gap: 0.35rem; padding: 0.4rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.toolbar .sep { width: 1px; background: var(--border); margin: 0 0.25rem; }
+.editor-content .tiptap { min-height: 10rem; padding: 0.75rem 1rem; outline: none; font-size: 1.2rem; }
+.editor-content .tiptap .stretchText { background: var(--code-bg); border-bottom: 2px dotted var(--accent); border-radius: 3px; }
+.editor-content .tiptap .ProseMirror-selectednode { outline: 2px solid var(--accent); }
+
+rt { font-size: 0.55em; }
+.reading { font-size: 1.3rem; line-height: 2.2; }
+.reading .stretchText { cursor: pointer; border-bottom: 2px dotted var(--accent); }
+.reading.student .stretchText:not(.revealed) rt { visibility: hidden; }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.code { white-space: pre-wrap; word-break: break-all; font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; background: var(--code-bg); }

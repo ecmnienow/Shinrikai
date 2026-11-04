@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <UserSecretsId>nienow-shinrikai-api</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nienow.Shinrikai.Core\Nienow.Shinrikai.Core.csproj" />
+    <ProjectReference Include="..\Nienow.DataBaseConn\Nienow.DataBaseConn.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.User\Nienow.Shinrikai.User.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Vocabulary\Nienow.Shinrikai.Vocabulary.csproj" />
+    <ProjectReference Include="..\Nienow.Shinrikai.Monitoring\Nienow.Shinrikai.Monitoring.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nienow.Shinrikai.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "shinrikai-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "port/Nienow.Shinrikai", "--launch-profile", "Shinrikai"],
+      "port": 5080
+    },
+    {
+      "name": "shinrikai-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "port/web", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

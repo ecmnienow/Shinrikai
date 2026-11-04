@@ -1,0 +1,50 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { api, getToken, setToken, setUnauthorizedHandler } from '../api/client'
+import type { AuthenticatedUser, UserInfo } from '../api/types'
+
+interface AuthState {
+  user: UserInfo | null
+  loading: boolean
+  login: (username: string, password: string) => Promise<void>
+  logout: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthState | null>(null)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<UserInfo | null>(null)
+  const [loading, setLoading] = useState(() => getToken() !== null)
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null))
+    if (!getToken()) return
+    api<UserInfo>('/auth/me')
+      .then(setUser)
+      .catch(() => setToken(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const login = useCallback(async (username: string, password: string) => {
+    const auth = await api<AuthenticatedUser>('/auth/login', { method: 'POST', json: { username, password } })
+    setToken(auth.token)
+    setUser(auth.user)
+  }, [])
+
+  const logout = useCallback(async () => {
+    try {
+      await api('/auth/logout', { method: 'POST' })
+    } finally {
+      setToken(null)
+      setUser(null)
+    }
+  }, [])
+
+  const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout])
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth fora de <AuthProvider>')
+  return ctx
+}
