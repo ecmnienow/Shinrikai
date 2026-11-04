@@ -10,8 +10,8 @@ total_tokens: 106201
 > Contagem de tokens estimada (bytes ÷ 4) sobre os arquivos rastreados, sem `package-lock.json` e imagens.
 
 O Shinrikai é o sistema hipermídia adaptativa para estudo de japonês do TCC de Éverton C. M. Nienow (UCS).
-Esta é a versão portada de ASP.NET MVC 5 / .NET Framework 4.5 / IIS para **.NET 10 (API em Kestrel) +
-React**, mantendo o banco **Firebird**. O valor acadêmico está nas 4 técnicas de adaptatividade de
+Esta é a versão portada de ASP.NET MVC 5 / .NET Framework 4.5 / IIS para **.NET 10 (API e interface em
+Kestrel, processos separados) + React**, mantendo o banco **Firebird**. O valor acadêmico está nas 4 técnicas de adaptatividade de
 `Nienow.Shinrikai.Core/Adaptive`, testadas 1:1 contra cópias literais do código original.
 
 ## Visão geral do sistema
@@ -19,13 +19,16 @@ React**, mantendo o banco **Firebird**. O valor acadêmico está nas 4 técnicas
 ```mermaid
 graph TB
     subgraph Browser
-        SPA["web/ — React 18 + Vite<br/>páginas, WordDrill, ContentReader, RichEditor (TipTap)"]
+        SPA["ClientApp — React 18 + Vite<br/>páginas, WordDrill, ContentReader, RichEditor (TipTap)"]
     end
-    subgraph API["Nienow.Shinrikai — ASP.NET Core em Kestrel"]
+    subgraph Web["Nienow.Shinrikai.Web — Kestrel :5090"]
+        Static["wwwroot (build do React)<br/>+ fallback index.html"]
+        Yarp["YARP<br/>/api/* → API"]
+    end
+    subgraph API["Nienow.Shinrikai.Api — Kestrel :5080"]
         Ctl["Controllers /api/*<br/>(JWT, roles)"]
         Exc[ApiExceptionHandler]
         Jwt[JwtTokenService]
-        Static["wwwroot (build do React)<br/>+ fallback index.html"]
     end
     subgraph Domain["Módulos de domínio (repositório + serviço)"]
         User
@@ -44,8 +47,9 @@ graph TB
     end
     FDB[("Firebird 5<br/>SHINRIKAI_LEGADO.FDB")]
 
-    SPA -- "fetch /api + Bearer" --> Ctl
-    SPA -. "build → wwwroot" .-> Static
+    Static -- "index.html, assets" --> SPA
+    SPA -- "fetch /api + Bearer" --> Yarp
+    Yarp --> Ctl
     Ctl --> Jwt
     Ctl --> Domain
     Ctl -. erros .-> Exc
@@ -60,7 +64,7 @@ graph TB
 ## Estrutura de diretórios
 
 ```
-Nienow.Shinrikai.sln            solution (12 projetos + pasta tests)
+Nienow.Shinrikai.sln            solution (13 projetos + pasta tests)
 Directory.Build.props           net10.0, Nullable on, ImplicitUsings OFF, LangVersion latest
 global.json                     SDK 10.0.100, rollForward latestFeature
 .editorconfig                   namespaces em bloco, usings fora do namespace, System primeiro
@@ -75,12 +79,13 @@ Nienow.Shinrikai.Text/          TextModule.cs — leitura com stretchtext
 Nienow.Shinrikai.Exercises/     ExercisesModule.cs — ordenação adaptativa
 Nienow.Shinrikai.Dictionary/    DictionaryModule.cs — busca em memória sobre o vocabulário
 Nienow.Shinrikai.Monitoring/    MonitoringService.cs — log INTERACTIONS (dados da pesquisa)
-Nienow.Shinrikai/               API: Program.cs, Controllers/, Auth/, ApiExceptionHandler, appsettings*
+Nienow.Shinrikai.Api/           API (só /api): Program.cs, Controllers/, Auth/, ApiExceptionHandler, appsettings*
+Nienow.Shinrikai.Web/           interface: Program.cs (arquivos estáticos + fallback + YARP), appsettings*
+Nienow.Shinrikai.Web/ClientApp/ front React + Vite + TipTap (build vai para Nienow.Shinrikai.Web/wwwroot)
 tests/Nienow.Shinrikai.Tests/   xUnit; Legacy/ = cópias literais do código original (oráculo)
-web/                            front React + Vite + TipTap (build vai para Nienow.Shinrikai/wwwroot)
 database/                       schema.sql, seed.sql e scripts PowerShell (criar, conectar, promover)
-.github/workflows/build.yml     CI: build, testes, Sonar (não bloqueante), build do web
-.claude/launch.json             servidores de preview: API :5080 e web :5173
+.github/workflows/build.yml     CI: build, testes, Sonar (não bloqueante), build do ClientApp
+.claude/launch.json             servidores de preview: API :5080, Vite :5173 e host da interface :5090
 ```
 
 ## Guia dos módulos
@@ -93,7 +98,8 @@ Core              → Helper
 DataBaseConn      → Helper   (+ FirebirdSql.Data.FirebirdClient 10.3.4, Microsoft.Extensions.Options)
 User, Vocabulary, Kanji, Grammar, Text, Exercises, Monitoring → DataBaseConn, Core
 Dictionary        → Core, Vocabulary     (único módulo de domínio que referencia outro)
-Nienow.Shinrikai  → todos os anteriores  (+ JwtBearer 10.0.12, Swashbuckle 10.3.1)
+Shinrikai.Api     → todos os anteriores  (+ JwtBearer 10.0.12, Swashbuckle 10.3.1)
+Shinrikai.Web     (sem referências a projetos; + Yarp.ReverseProxy 2.3.0) — fala com a API só por HTTP
 Tests             → Core, Vocabulary, User, Kanji, Grammar, Text, Exercises, Dictionary
 ```
 
@@ -173,11 +179,11 @@ que são o que os testes cobrem.
 | Dictionary | `DictionaryModule.cs` (923) | VOCABULARY, SUBJECTS (via `IVocabularyRepository`) | carrega todo o vocabulário e busca em memória; ordem exato → prefixo → contém; sensível a maiúsculas |
 | Monitoring | `MonitoringService.cs` (489) | INTERACTIONS | log de pesquisa por tela/ação/opção; falhas viram warning e nunca derrubam a requisição |
 
-### Nienow.Shinrikai (API)
+### Nienow.Shinrikai.Api (API)
 
 | Arquivo | Propósito | Tokens |
 |---|---|---|
-| `Program.cs` | Kestrel (endpoints da config, 20 MB de corpo), proxy reverso opcional, DI, JWT, Swagger (só Development), arquivos estáticos + fallback SPA | 2051 |
+| `Program.cs` | Kestrel (endpoints da config, 20 MB de corpo), proxy reverso opcional, DI, JWT, Swagger (só Development). Não serve o SPA | ~1.950 |
 | `ApiExceptionHandler.cs` | `DatabaseUnavailableException` → 503 com explicação; demais → 500 (detalhe só em Development) | 563 |
 | `Auth/JwtTokenService.cs` | `JwtOptions`, emissão HMAC-SHA256 (480 min), claims `jlpt` e `shinrikai_session`, `User.UserId()/Jlpt()/SessionId()` | 874 |
 | `Controllers/*.cs` | 9 controllers, 45 rotas. Base `ShinrikaiController` (`[Authorize]`, `Log` em INTERACTIONS com o nome da tela, nível do usuário, `Result`); `StudyController` acrescenta `POST interactions` (vocabulário, transcrição, kanjis) | ~7.800 |
@@ -200,7 +206,18 @@ singletons. Repositórios e serviços são scoped. Enums trafegam como string (`
 | `dictionary` | `POST interactions`; `GET search?term=&type=General\|Japanese\|Portuguese` |
 | `notifications` | `GET {id}?force=`; `POST {id}/understood` (ids de ajuda: 1 transcrição, 3 gramática, 4 texto, 5 exercícios, 6 vocabulário, 7 kanji) |
 
-### web/ (React)
+### Nienow.Shinrikai.Web (interface)
+
+| Arquivo | Propósito | Tokens |
+|---|---|---|
+| `Program.cs` | Kestrel, `UseDefaultFiles` + `UseStaticFiles` (wwwroot), `MapReverseProxy` (YARP) e `MapFallbackToFile("index.html")` | ~250 |
+| `appsettings.json` | Kestrel `http://localhost:5090`; seção `ReverseProxy`: rota `/api/{**catch-all}` → cluster `api` (`http://localhost:5080/`) | ~200 |
+| `Nienow.Shinrikai.Web.csproj` | `ClientApp/**` fora do conteúdo publicável; alvo `PublishClientApp` roda `npm ci` + `npm run build` no `dotnet publish` e inclui o `wwwroot` (`-p:SkipClientApp=true` pula o npm) | ~450 |
+
+Não referencia a API nem o domínio: a única ligação é o endereço HTTP do cluster. Com a API fora do ar,
+`/api/*` responde 502.
+
+### Nienow.Shinrikai.Web/ClientApp (React)
 
 | Área | Arquivos | Tokens |
 |---|---|---|
@@ -216,7 +233,7 @@ singletons. Repositórios e serviços são scoped. Enums trafegam como string (`
 (Administrator ou Teacher).
 
 **Dev e build:** Vite na porta 5173 encaminha `/api` para `http://localhost:5080`. O `npm run build`
-roda `tsc -b` e grava em `../Nienow.Shinrikai/wwwroot` com `emptyOutDir`.
+roda `tsc -b` e grava em `../wwwroot` (o `wwwroot` do `Nienow.Shinrikai.Web`) com `emptyOutDir`.
 
 ### tests/
 
@@ -383,7 +400,7 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
     Só use com a API isolada atrás do proxy.
 15. **Mídia** é servida sempre como `image/jpeg` ou `audio/mpeg`. O front busca como blob autenticado,
     porque `<img src>` não manda o JWT.
-16. **`npm run build` apaga `Nienow.Shinrikai/wwwroot`** (`emptyOutDir`). A pasta é ignorada pelo git.
+16. **`npm run build` apaga `Nienow.Shinrikai.Web/wwwroot`** (`emptyOutDir`). A pasta é ignorada pelo git.
 17. **`StrictMode` no dev** executa os efeitos duas vezes: logs de interação e a janela de ajuda disparam
     em dobro só em desenvolvimento.
 18. **Visual Studio e troca de branch:** trocar para um branch com o projeto legado (MVC 5) com a solução
@@ -393,12 +410,12 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
 
 - **Novo endpoint num módulo existente:**
   1. Método no repositório e no serviço do `*Module.cs` do módulo.
-  2. Ação no controller em `Nienow.Shinrikai/Controllers/`, com `[Authorize(Roles = Roles.ContentEditors)]`
+  2. Ação no controller em `Nienow.Shinrikai.Api/Controllers/`, com `[Authorize(Roles = Roles.ContentEditors)]`
      se for de cadastro.
-  3. Tipo em `web/src/api/types.ts` e chamada na página.
+  3. Tipo em `Nienow.Shinrikai.Web/ClientApp/src/api/types.ts` e chamada na página.
 - **Novo módulo de domínio:**
   1. Projeto `Nienow.Shinrikai.X` → `DataBaseConn` + `Core`.
-  2. Referência no `Nienow.Shinrikai.csproj`, registro scoped em `Program.ConfigureServices`.
+  2. Referência no `Nienow.Shinrikai.Api.csproj`, registro scoped em `Program.ConfigureServices`.
   3. Controller.
   4. Referência no projeto de testes e entrada na `.sln`.
 - **Mudar uma regra adaptativa:**
@@ -408,11 +425,11 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
 - **Novo contador por usuário:** nova instância de `MonitorTable` em `MonitorStore.cs`, tabela e generator
   em `database/schema.sql`.
 - **Nova tela no front:**
-  1. Página em `web/src/pages/` (ou `pages/register/`).
+  1. Página em `Nienow.Shinrikai.Web/ClientApp/src/pages/` (ou `pages/register/`).
   2. Rota em `App.tsx` com `auth()` ou `editors()`.
   3. Item (com `page`) em `menu.tsx`; a rota sai dele.
   4. Ajuda: id em `components/Help.tsx` e linha em `NOTIFICATIONS` (`seed.sql`).
-- **Editor de texto:** `web/src/editor/RichEditor.tsx` (barra e modos), `extensions.ts` (nós),
+- **Editor de texto:** `Nienow.Shinrikai.Web/ClientApp/src/editor/RichEditor.tsx` (barra e modos), `extensions.ts` (nós),
   `fidelity.ts` (checagem), `VocabularyPicker.tsx` (escolher a palavra).
 - **Autenticação/papéis:**
   - `Auth/JwtTokenService.cs`, `Program.ConfigureAuthentication`, `Roles` em `UserModule.cs`.
@@ -424,5 +441,7 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
   - Dar papel de professor/admin: `database/promote-user.ps1 -Login x`.
 - **Hospedagem:**
   - Seção `Kestrel` e `ReverseProxy` do `appsettings.json`.
-  - Publicar: `npm --prefix web run build` + `dotnet publish Nienow.Shinrikai -c Release`.
+  - Endereço da API usado pela interface: `ReverseProxy:Clusters:api` no `appsettings.json` do Web.
+  - Publicar: `dotnet publish Nienow.Shinrikai.Api -c Release` e `dotnet publish Nienow.Shinrikai.Web -c Release`
+    (este já roda o build do React).
 - **CI:** `.github/workflows/build.yml`. O Sonar é não bloqueante e cada comando fica no seu step.

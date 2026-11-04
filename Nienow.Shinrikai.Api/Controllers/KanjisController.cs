@@ -5,14 +5,14 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Api.Auth;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Core.Adaptive;
 using Nienow.Shinrikai.Kanji;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
 
-namespace Nienow.Shinrikai.Controllers
+namespace Nienow.Shinrikai.Api.Controllers
 {
     public sealed record GenerateKanjiRequest(string Level, bool Mistakes);
 

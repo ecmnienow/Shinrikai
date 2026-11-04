@@ -22,7 +22,7 @@ if (-not (Test-Path $Path)) { throw "Banco '$Path' não encontrado. Crie com .\d
 $Path = (Resolve-Path $Path).Path
 $connectionString = "character set=UTF8;initial catalog=$Path;data source=$Server;port=$Port;dialect=3;user id=$User;password=$Password"
 
-$project = Join-Path (Split-Path $PSScriptRoot -Parent) 'Nienow.Shinrikai'
+$project = Join-Path (Split-Path $PSScriptRoot -Parent) 'Nienow.Shinrikai.Api'
 $launchSettings = Join-Path $project 'Properties\launchSettings.json'
 
 # launchSettings.json (perfil Shinrikai)

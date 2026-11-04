@@ -25,10 +25,14 @@ oráculo nos testes).
 ├── Nienow.Shinrikai.Exercises/  Exercícios (ordenação adaptativa) + cadastro
 ├── Nienow.Shinrikai.Dictionary/ Dicionário
 ├── Nienow.Shinrikai.Monitoring/ Log de interações (INTERACTIONS)
-├── Nienow.Shinrikai/            API ASP.NET Core 10 em Kestrel (JWT, Swagger, serve o SPA)
-├── tests/Nienow.Shinrikai.Tests xUnit — inclui oráculo com cópia literal do código original
-└── web/                         React + Vite + TipTap
+├── Nienow.Shinrikai.Api/        API ASP.NET Core 10 em Kestrel (JWT, Swagger), só /api
+├── Nienow.Shinrikai.Web/        Interface: host Kestrel que serve o SPA e encaminha /api (YARP)
+│   └── ClientApp/               React + Vite + TipTap
+└── tests/Nienow.Shinrikai.Tests xUnit — inclui oráculo com cópia literal do código original
 ```
+
+A interface e a API são processos separados. O navegador só fala com o `Nienow.Shinrikai.Web`, que
+entrega o build do React e repassa `/api/*` para o `Nienow.Shinrikai.Api` (mesma origem, sem CORS).
 
 ## Paridade com o sistema original
 
@@ -56,7 +60,7 @@ Todas as telas, ações e regras do MVC 5 têm equivalente:
 | Dictionary/Index · Search · GetImage · GetAudio | `/dicionario` → `/api/dictionary/search`, mídia em `/api/vocabulary/words/{id}/{image\|audio}/{slot}` |
 | Registro em INTERACTIONS (todas as telas) | mantido, com as mesmas telas/ações |
 | `bootstrap.dialogs` / `bootstrap.image` | `components/Dialogs.tsx` (alerta, erro, info, sucesso, pergunta, imagem) |
-| Logo (`Content/Images/Logo.png`) | `web/public/logo.png` (também favicon) |
+| Logo (`Content/Images/Logo.png`) | `Nienow.Shinrikai.Web/ClientApp/public/logo.png` (também favicon) |
 
 Não foram portados: o menu lateral do `_Layout` (template de exemplo com "Jhon Smith", "E-commerce",
 "Dashboard" — sem função no sistema) e o menu "Administrador" que já estava comentado no original.
@@ -68,12 +72,16 @@ Não foram portados: o menu lateral do `_Layout` (template de exemplo com "Jhon 
 dotnet test Nienow.Shinrikai.sln
 
 # API (http://localhost:5080, Swagger em /swagger)
-dotnet user-secrets --project Nienow.Shinrikai set "ConnectionStrings:ShinrikaiDB" "character set=UTF8;initial catalog=C:\caminho\SHINRIKAI.FDB;data source=localhost;port=3050;dialect=3;user id=SYSDBA;password=..."
-dotnet run --project Nienow.Shinrikai
+dotnet user-secrets --project Nienow.Shinrikai.Api set "ConnectionStrings:ShinrikaiDB" "character set=UTF8;initial catalog=C:\caminho\SHINRIKAI.FDB;data source=localhost;port=3050;dialect=3;user id=SYSDBA;password=..."
+dotnet run --project Nienow.Shinrikai.Api
 
-# front (http://localhost:5173, /api é encaminhado para a 5080)
-npm --prefix web install
-npm --prefix web run dev
+# interface em desenvolvimento (Vite com HMR, http://localhost:5173, /api é encaminhado para a 5080)
+npm --prefix Nienow.Shinrikai.Web/ClientApp install
+npm --prefix Nienow.Shinrikai.Web/ClientApp run dev
+
+# ou a interface como em produção (http://localhost:5090, serve o build e encaminha /api para a 5080)
+npm --prefix Nienow.Shinrikai.Web/ClientApp run build
+dotnet run --project Nienow.Shinrikai.Web
 ```
 
 Em produção, `Jwt:Key` (≥ 32 bytes) e a connection string vêm de variáveis de ambiente
@@ -81,8 +89,9 @@ Em produção, `Jwt:Key` (≥ 32 bytes) e a connection string vêm de variáveis
 
 ### Hospedagem (Kestrel)
 
-A API roda direto no **Kestrel**, sem IIS (o `Web.config` não existe mais). Os endpoints ficam na
-seção `Kestrel` do `appsettings.json` e podem ser sobrescritos no ambiente:
+A API e a interface rodam direto no **Kestrel**, sem IIS (o `Web.config` não existe mais). Os
+endpoints de cada uma ficam na seção `Kestrel` do seu `appsettings.json` (API na 5080, interface na
+5090) e podem ser sobrescritos no ambiente:
 
 ```bash
 # porta/host
@@ -93,10 +102,20 @@ Kestrel__Endpoints__Https__Certificate__Path=/caminho/cert.pfx
 Kestrel__Endpoints__Https__Certificate__Password=...
 ```
 
-Atrás de um proxy reverso (nginx, Caddy, IIS como proxy), defina `ReverseProxy__Enabled=true`
-para respeitar `X-Forwarded-For`/`X-Forwarded-Proto`. Publicação:
-`dotnet publish Nienow.Shinrikai -c Release -o out` e então `dotnet out/Nienow.Shinrikai.dll`.
-`npm --prefix web run build` publica o SPA em `Nienow.Shinrikai/wwwroot`, servido pela própria API.
+O endereço da API que a interface usa fica em
+`ReverseProxy:Clusters:api:Destinations:shinrikai-api:Address` no `appsettings.json` do
+`Nienow.Shinrikai.Web` (no ambiente: `ReverseProxy__Clusters__api__Destinations__shinrikai-api__Address`).
+
+A API atrás de um proxy reverso (o próprio `Nienow.Shinrikai.Web`, nginx, Caddy, IIS como proxy) pode
+ter `ReverseProxy__Enabled=true` para respeitar `X-Forwarded-For`/`X-Forwarded-Proto`. Publicação:
+
+```bash
+dotnet publish Nienow.Shinrikai.Api -c Release -o out/api   # dotnet out/api/Nienow.Shinrikai.Api.dll
+dotnet publish Nienow.Shinrikai.Web -c Release -o out/web   # dotnet out/web/Nienow.Shinrikai.Web.dll
+```
+
+O `dotnet publish` do `Nienow.Shinrikai.Web` roda `npm ci` + `npm run build` em `ClientApp` e publica o
+`wwwroot` junto (`-p:SkipClientApp=true` reaproveita um build já feito).
 
 ### Banco novo (vazio)
 

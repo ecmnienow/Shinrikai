@@ -16,7 +16,10 @@ em `tests/Nienow.Shinrikai.Tests/Legacy` (não refatore essas cópias).
 - Bibliotecas base: `Nienow.Helper`, `Nienow.Shinrikai.Core`, `Nienow.DataBaseConn`.
 - Um projeto por domínio (`Nienow.Shinrikai.{User,Vocabulary,Kanji,Grammar,Text,Exercises,Dictionary,Monitoring}`),
   cada um com repositório + serviço.
-- API em `Nienow.Shinrikai/`, front em `web/`, scripts do banco em `database/`, testes em `tests/`.
+- API em `Nienow.Shinrikai.Api/` (só `/api`).
+- Interface em `Nienow.Shinrikai.Web/`: host Kestrel que serve o build do React e encaminha `/api` para a
+  API via YARP; o fonte React fica em `Nienow.Shinrikai.Web/ClientApp/`.
+- Scripts do banco em `database/`, testes em `tests/`.
 
 **Convenções:**
 - `ImplicitUsings` desligado: usings explícitos, `System.*` primeiro.
@@ -26,8 +29,10 @@ em `tests/Nienow.Shinrikai.Tests/Legacy` (não refatore essas cópias).
 
 **Comandos:**
 - Testes: `dotnet test Nienow.Shinrikai.sln`.
-- API: `dotnet run --project Nienow.Shinrikai --launch-profile Shinrikai` (porta 5080).
-- Front: `npm --prefix web run dev` (porta 5173).
+- API: `dotnet run --project Nienow.Shinrikai.Api --launch-profile Shinrikai` (porta 5080).
+- Front em dev: `npm --prefix Nienow.Shinrikai.Web/ClientApp run dev` (porta 5173, Vite encaminha `/api`).
+- Interface como em produção: `npm --prefix Nienow.Shinrikai.Web/ClientApp run build` e
+  `dotnet run --project Nienow.Shinrikai.Web` (porta 5090).
 - Banco local: `database/create-database.ps1`.
 
 Para a arquitetura detalhada, consulte [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).

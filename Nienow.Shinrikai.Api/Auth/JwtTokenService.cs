@@ -7,7 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.User;
 
-namespace Nienow.Shinrikai.Auth
+namespace Nienow.Shinrikai.Api.Auth
 {
     public sealed class JwtOptions
     {

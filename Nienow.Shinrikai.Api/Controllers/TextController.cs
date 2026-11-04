@@ -3,13 +3,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Api.Auth;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.Text;
 using Nienow.Shinrikai.User;
 
-namespace Nienow.Shinrikai.Controllers
+namespace Nienow.Shinrikai.Api.Controllers
 {
     /// <summary>Port de TextController (leitura com stretchtext + cadastro).</summary>
     [Route("api/texts")]

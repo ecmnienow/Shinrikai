@@ -3,13 +3,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Api.Auth;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Grammar;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
 
-namespace Nienow.Shinrikai.Controllers
+namespace Nienow.Shinrikai.Api.Controllers
 {
     /// <summary>Port de GrammarController (mapa adaptativo + cadastro).</summary>
     [Route("api/grammar")]

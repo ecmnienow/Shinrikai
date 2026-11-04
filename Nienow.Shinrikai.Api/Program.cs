@@ -1,4 +1,5 @@
 // Ponto de entrada da API. Substitui Global.asax + App_Start + Web.config. Hospedagem: Kestrel (sem IIS).
+// Só atende /api (e /swagger em dev); a interface é servida pelo projeto Nienow.Shinrikai.Web.
 using System;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,9 +14,9 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Nienow.DataBaseConn;
-using Nienow.Shinrikai;
-using Nienow.Shinrikai.Auth;
-using Nienow.Shinrikai.Controllers;
+using Nienow.Shinrikai.Api;
+using Nienow.Shinrikai.Api.Auth;
+using Nienow.Shinrikai.Api.Controllers;
 using Nienow.Shinrikai.Dictionary;
 using Nienow.Shinrikai.Exercises;
 using Nienow.Shinrikai.Grammar;
@@ -115,10 +116,5 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-// Em produção, o build do React (web → wwwroot) é servido daqui.
-app.UseDefaultFiles();
-app.UseStaticFiles();
-app.MapFallbackToFile("index.html");
 
 app.Run();

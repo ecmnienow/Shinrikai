@@ -34,7 +34,7 @@ namespace Nienow.DataBaseConn
     {
         public const string NotConfiguredMessage =
             "A conexão com o banco não está configurada (ConnectionStrings:ShinrikaiDB). " +
-            "Configure com: dotnet user-secrets --project Nienow.Shinrikai set \"ConnectionStrings:ShinrikaiDB\" \"...\"";
+            "Configure com: dotnet user-secrets --project Nienow.Shinrikai.Api set \"ConnectionStrings:ShinrikaiDB\" \"...\"";
 
         private readonly string _connectionString = options.Value.ShinrikaiDB;
 

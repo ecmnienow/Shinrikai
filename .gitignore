@@ -35,8 +35,8 @@ bld/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
-# Build do React publicado dentro da API (npm --prefix web run build)
-Nienow.Shinrikai/wwwroot/
+# Build do React publicado na interface (npm --prefix Nienow.Shinrikai.Web/ClientApp run build)
+Nienow.Shinrikai.Web/wwwroot/
 
 # Visual Studio 2017 auto generated files
 Generated\ Files/

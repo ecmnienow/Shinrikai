@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Nienow.Shinrikai.Dictionary;
 using Nienow.Shinrikai.Monitoring;
 
-namespace Nienow.Shinrikai.Controllers
+namespace Nienow.Shinrikai.Api.Controllers
 {
     /// <summary>
     /// Port de DictionaryController. Imagem e áudio usam /api/vocabulary/words/{id}/{image|audio}/{slot}

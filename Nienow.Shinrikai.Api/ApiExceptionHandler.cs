@@ -9,7 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nienow.DataBaseConn;
 
-namespace Nienow.Shinrikai
+namespace Nienow.Shinrikai.Api
 {
     /// <summary>
     /// Converte exceções em ProblemDetails legíveis. O original mostrava a página de erro do ASP.NET

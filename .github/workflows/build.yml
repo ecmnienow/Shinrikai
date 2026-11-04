@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: Nienow.Shinrikai.Web/ClientApp/package-lock.json
 
       - name: Set up JDK 17 (SonarQube scanner)
         uses: actions/setup-java@v4
@@ -80,7 +80,7 @@ jobs:
         run: .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
       - name: Install web dependencies
-        run: npm --prefix web ci
+        run: npm --prefix Nienow.Shinrikai.Web/ClientApp ci
 
       - name: Build web
-        run: npm --prefix web run build
+        run: npm --prefix Nienow.Shinrikai.Web/ClientApp run build

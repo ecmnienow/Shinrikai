@@ -3,13 +3,13 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Api.Auth;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.Vocabulary;
 using Nienow.Shinrikai.Vocabulary.Model;
 
-namespace Nienow.Shinrikai.Controllers
+namespace Nienow.Shinrikai.Api.Controllers
 {
     public sealed record GenerateTranscriptionRequest(int SubjectId, bool Mistakes);
 

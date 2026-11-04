@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    Interface do Shinrikai: hospeda em Kestrel o build do React (ClientApp → wwwroot) e encaminha /api para
+    o Nienow.Shinrikai.Api via YARP. Não referencia a API nem os módulos de domínio.
+  -->
+  <PropertyGroup>
+    <SpaRoot>ClientApp\</SpaRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(SpaRoot)node_modules\**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- O fonte do React aparece no projeto, mas não é publicado. -->
+    <Content Remove="$(SpaRoot)**" />
+    <None Remove="$(SpaRoot)**" />
+    <None Include="$(SpaRoot)**" Exclude="$(SpaRoot)node_modules\**" />
+    <!-- wwwroot é gerado pelo `npm run build` (emptyOutDir): o alvo abaixo o inclui na publicação. -->
+    <Content Remove="wwwroot\**" />
+  </ItemGroup>
+
+  <!-- dotnet publish: instala as dependências, gera o build do React e publica wwwroot junto.
+       Use -p:SkipClientApp=true se o build do front já foi feito à parte. -->
+  <Target Name="PublishClientApp" AfterTargets="ComputeFilesToPublish">
+    <Exec Condition="'$(SkipClientApp)' != 'true'" WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+    <Exec Condition="'$(SkipClientApp)' != 'true'" WorkingDirectory="$(SpaRoot)" Command="npm run build" />
+    <ItemGroup>
+      <ClientAppFiles Include="wwwroot\**" />
+      <ResolvedFileToPublish Include="@(ClientAppFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <Error Condition="'@(ClientAppFiles)' == ''" Text="wwwroot está vazio: rode `npm --prefix Nienow.Shinrikai.Web/ClientApp run build` ou publique sem SkipClientApp." />
+  </Target>
+</Project>
