@@ -32,7 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      // Só registra a interação; se falhar (token expirado, rede), sai do mesmo jeito.
       await api('/auth/logout', { method: 'POST' })
+    } catch {
+      /* ignorado */
     } finally {
       setToken(null)
       setUser(null)

@@ -1,6 +1,7 @@
 :root {
   --bg: #f7f5f2;
   --surface: #ffffff;
+  --surface-2: #f1eee9;
   --text: #1f1d1a;
   --muted: #6b665e;
   --border: #ddd6cc;
@@ -10,7 +11,9 @@
   --ok-bg: #e8f5ec;
   --err: #b3261e;
   --err-bg: #fbeceb;
-  --code-bg: #f1eee9;
+  --warn-bg: #fff6dd;
+  --warn: #7a5a00;
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.18);
   color-scheme: light dark;
   font-family: system-ui, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', sans-serif;
   line-height: 1.5;
@@ -20,6 +23,7 @@
   :root {
     --bg: #171614;
     --surface: #211f1c;
+    --surface-2: #1b1a18;
     --text: #ece8e2;
     --muted: #a39d93;
     --border: #3a3631;
@@ -29,66 +33,175 @@
     --ok-bg: #16281c;
     --err: #ff8a80;
     --err-bg: #2e1715;
-    --code-bg: #1b1a18;
+    --warn-bg: #2e2510;
+    --warn: #f0cf75;
+    --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
   }
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); }
 h1 { font-size: 1.6rem; margin: 0.5rem 0 1rem; }
-h2 { font-size: 1.1rem; margin: 0.5rem 0; }
+h2 { font-size: 1.15rem; margin: 1rem 0 0.5rem; }
+a { color: var(--accent); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 1rem 16px 3rem; }
-main.narrow { max-width: 640px; }
+main.narrow { max-width: 680px; }
 
+/* ---- Barra superior e menus ---- */
 .topbar {
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-  padding: 0.6rem 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0.5rem 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
 }
-.topbar nav { display: flex; gap: 1rem; }
 .topbar a { color: var(--text); text-decoration: none; }
 .topbar a.active { color: var(--accent); font-weight: 600; }
-.brand { font-weight: 700; }
+.brand { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 700; }
+.menus { display: flex; gap: 0.25rem; }
+.topbar .user { font-size: 0.9rem; }
+.dropdown { position: relative; }
+.dropdown-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; min-width: 240px; z-index: 20;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
+  padding: 0.25rem 0;
+}
+.dropdown-group + .dropdown-group { border-top: 1px solid var(--border); margin-top: 0.25rem; padding-top: 0.25rem; }
+.dropdown-menu a { display: block; padding: 0.45rem 1rem; }
+.dropdown-menu a:hover, .dropdown-menu a:focus-visible { background: var(--surface-2); }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+/* ---- Blocos comuns ---- */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 0 0 1rem; }
 .stack { display: flex; flex-direction: column; gap: 0.75rem; }
 .row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .row.center { justify-content: center; }
 .spacer { flex: 1; }
+.grow { flex: 1; min-width: 0; }
 .muted { color: var(--muted); }
 .notice { padding: 0.75rem 1rem; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
-.error { color: var(--err); margin: 0; }
+.notice.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; margin: 0; border-radius: 0; }
+.notice.error, .error { color: var(--err); }
+.error { margin: 0; }
+.page-title { display: flex; align-items: center; gap: 0.5rem; }
+.page-title h1 { flex: 1; }
+.lead { font-size: 1.15em; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
 
 label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
 label.inline { flex-direction: row; align-items: center; gap: 0.35rem; }
+fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; margin: 0; min-width: 0; }
+fieldset.card { padding: 1rem; }
+legend { font-size: 0.9rem; padding: 0 0.25rem; }
 
-input, select, button {
+input, select, button, textarea, a.button {
   font: inherit; color: inherit; background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.65rem;
 }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button { cursor: pointer; }
+textarea { resize: vertical; }
+input[type='radio'], input[type='checkbox'] { padding: 0; }
+input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button, a.button { cursor: pointer; text-decoration: none; text-align: center; }
 button:disabled { opacity: 0.45; cursor: default; }
-button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-button[aria-pressed='true'] { background: var(--code-bg); border-color: var(--accent); }
+button.primary, a.button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.link { border: none; background: none; padding: 0.25rem 0.5rem; }
+button.icon, a.icon { border: none; background: none; padding: 0.1rem 0.4rem; font-size: 1rem; line-height: 1; }
+button.help {
+  width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 1px solid var(--border);
+  font-weight: 700; color: var(--muted); padding: 0;
+}
+a.block { display: block; margin-top: 0.75rem; }
+button[aria-pressed='true'] { background: var(--surface-2); border-color: var(--accent); }
+.is-wrong { border-color: var(--err) !important; background: var(--err-bg) !important; }
+.is-right { border-color: var(--ok) !important; background: var(--ok-bg) !important; }
 
+/* ---- Home ---- */
+.hero { display: flex; align-items: center; gap: 1rem; margin: 1rem 0 1.5rem; }
+.hero h1 { margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
+.tile {
+  display: block; padding: 1rem; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); text-decoration: none; font-weight: 600;
+}
+.tile:hover { border-color: var(--accent); }
+
+/* ---- Estudo em lista (vocabulário, transcrição) ---- */
 .word-row { display: grid; grid-template-columns: minmax(6rem, 30%) 1fr; gap: 0.5rem; align-items: center; }
 .word-row .prompt { text-align: right; font-size: 1.05rem; overflow-wrap: anywhere; }
 .word-row .expected { grid-column: 2; font-size: 0.85rem; color: var(--err); }
 .word-row.right input { border-color: var(--ok); background: var(--ok-bg); }
 .word-row.wrong input { border-color: var(--err); background: var(--err-bg); }
 
-.editor { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin-bottom: 1rem; }
-.toolbar { display: flex; gap: 0.35rem; padding: 0.4rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.toolbar .sep { width: 1px; background: var(--border); margin: 0 0.25rem; }
-.editor-content .tiptap { min-height: 10rem; padding: 0.75rem 1rem; outline: none; font-size: 1.2rem; }
-.editor-content .tiptap .stretchText { background: var(--code-bg); border-bottom: 2px dotted var(--accent); border-radius: 3px; }
-.editor-content .tiptap .ProseMirror-selectednode { outline: 2px solid var(--accent); }
+/* ---- Kanji ---- */
+.kanji-row { display: grid; grid-template-columns: 4rem 1fr; gap: 0.5rem; align-items: center; }
+.kanji-row .kanji { font-size: 2rem; text-align: center; }
+.kanji-row .expected { grid-column: 2; font-size: 0.85rem; color: var(--err); }
+.kanji-inputs { display: grid; gap: 0.5rem; }
+.kanji-inputs input { min-width: 0; }
+.kanji-input { width: 4rem; font-size: 1.5rem; text-align: center; }
+
+/* ---- Leitor (gramática, texto, exercícios) ---- */
+.reader { display: grid; grid-template-columns: minmax(200px, 260px) 1fr; gap: 1.5rem; max-width: 1200px; }
+@media (max-width: 760px) { .reader { grid-template-columns: 1fr; } }
+.reader-menu ul { list-style: none; margin: 0; padding: 0; }
+.reader-menu li { display: flex; align-items: center; }
+.level-group { margin-bottom: 0.5rem; }
+.level-toggle { width: 100%; font-weight: 700; background: var(--surface-2); }
+.content-item {
+  flex: 1; text-align: left; border: none; border-radius: 6px; background: none; margin: 0.1rem 0;
+}
+.content-item:hover { background: var(--surface-2); }
+.content-item.active { background: var(--accent); color: var(--accent-text); }
+.content-item.locked { color: var(--muted); }
+.content-item.success { color: var(--ok); }
+.content-item.fail { color: var(--err); }
+.reader-content { min-width: 0; }
+.question { font-size: 1.15rem; white-space: pre-wrap; }
+.option { font-size: 1.05rem; }
 
 rt { font-size: 0.55em; }
-.reading { font-size: 1.3rem; line-height: 2.2; }
+.reading { font-size: 1.2rem; line-height: 2.1; overflow-x: auto; }
 .reading .stretchText { cursor: pointer; border-bottom: 2px dotted var(--accent); }
-.reading.student .stretchText:not(.revealed) rt { visibility: hidden; }
+.reading img { max-width: 100%; height: auto; }
+.reading table { border-collapse: collapse; }
+.reading td, .reading th { border: 1px solid var(--border); padding: 0.25rem 0.5rem; }
 
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
-.code { white-space: pre-wrap; word-break: break-all; font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; background: var(--code-bg); }
+/* ---- Dicionário ---- */
+.results { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1rem; }
+.result { display: grid; grid-template-columns: minmax(6rem, 25%) 1fr; gap: 0.75rem; }
+.result .found { text-align: right; font-weight: 600; overflow-wrap: anywhere; }
+.result .actions { margin-right: 0.5rem; }
+.result .actions a { text-decoration: none; padding: 0 0.3rem; }
+mark { background: var(--warn-bg); color: inherit; }
+
+/* ---- Editor ---- */
+.editor { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.toolbar { display: flex; gap: 0.3rem; padding: 0.4rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+.toolbar button, .toolbar select { padding: 0.25rem 0.5rem; font-size: 0.85rem; }
+.toolbar .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 0.15rem; }
+.editor-content .tiptap { min-height: 16rem; padding: 0.75rem 1rem; outline: none; font-size: 1.1rem; }
+.editor-content .tiptap .stretchText { background: var(--surface-2); border-bottom: 2px dotted var(--accent); border-radius: 3px; }
+.editor-content .tiptap .ProseMirror-selectednode { outline: 2px solid var(--accent); }
+.editor-content .tiptap table { border-collapse: collapse; }
+.editor-content .tiptap td, .editor-content .tiptap th { border: 1px solid var(--border); padding: 0.25rem 0.5rem; min-width: 3rem; }
+.editor-content .tiptap img { max-width: 100%; }
+.html-source {
+  width: 100%; min-height: 20rem; border: none; border-radius: 0 0 8px 8px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; background: var(--surface-2);
+}
+
+/* ---- Diálogos ---- */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100; background: rgb(0 0 0 / 0.45);
+  display: flex; align-items: flex-start; justify-content: center; padding: 8vh 16px;
+}
+.modal { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow); width: 100%; max-width: 520px; max-height: 84vh; display: flex; flex-direction: column; }
+.modal.wide { max-width: 760px; }
+.modal-header { display: flex; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.modal-header h3 { flex: 1; margin: 0; font-size: 1.05rem; }
+.modal-body { padding: 1rem; overflow: auto; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--border); }
+.dialog-message { white-space: pre-line; }
+.viewer-image { display: block; max-width: 100%; max-height: 60vh; margin: 0 auto; }
+.picker-list { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.picker-list button { width: 100%; text-align: left; }
+details { margin-top: 0.75rem; }
+.about p { margin: 0 0 1rem; }

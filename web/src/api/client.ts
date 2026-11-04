@@ -52,7 +52,8 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     let message = res.statusText
     try {
       const data = await res.json()
-      message = data.message ?? data.title ?? message
+      // Response { ok, message } das regras de negócio, ou ProblemDetails { title, detail } de erros.
+      message = data.message ?? [data.title, data.detail].filter(Boolean).join('\n') ?? message
     } catch {
       /* corpo vazio */
     }
