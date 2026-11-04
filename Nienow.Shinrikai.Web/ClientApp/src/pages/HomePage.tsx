@@ -15,9 +15,9 @@ function Tiles({ title, items }: { title: string; items: MenuItem[] }) {
   )
 }
 
-/** Views/Home/Index.cshtml — página inicial com os mesmos atalhos do menu. */
+/** Views/Home/Index.cshtml — página inicial com os mesmos atalhos do menu (só autenticado). */
 export function HomePage() {
-  const { user, isEditor } = useAuth()
+  const { isEditor } = useAuth()
 
   return (
     <main>
@@ -29,16 +29,8 @@ export function HomePage() {
         </div>
       </div>
 
-      {user ? (
-        <>
-          <Tiles title="Aluno" items={STUDENT_MENU.flat()} />
-          {isEditor && <Tiles title="Professor" items={TEACHER_MENU} />}
-        </>
-      ) : (
-        <p className="notice">
-          <Link to="/login">Entre</Link> ou cadastre-se para começar a estudar.
-        </p>
-      )}
+      <Tiles title="Aluno" items={STUDENT_MENU.flat()} />
+      {isEditor && <Tiles title="Professor" items={TEACHER_MENU} />}
     </main>
   )
 }

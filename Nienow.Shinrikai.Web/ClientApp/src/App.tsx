@@ -86,7 +86,7 @@ export default function App() {
         <BrowserRouter>
           <Header />
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
             <Route path="/sobre" element={<AboutPage />} />
             <Route path="/login" element={<LoginPage />} />
             {routes(STUDENT_MENU.flat())}
