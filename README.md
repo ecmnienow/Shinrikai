@@ -1,61 +1,126 @@
-# Shinrikai — port para .NET 8 + React
+# Shinrikai — .NET 10 + React
 
-Port do Shinrikai (ASP.NET MVC 5 / .NET Framework 4.5) seguindo o plano em `SHINRIKAI_PORT.md`.
-O código legado continua intacto na raiz do repositório como referência.
+Sistema hipermídia adaptativa para o estudo da língua japonesa (TCC — UCS), portado de
+ASP.NET MVC 5 / .NET Framework 4.5 + IIS para .NET 10 + Kestrel + React, seguindo o plano em
+`SHINRIKAI_PORT.md`.
+
+O código legado (MVC 5) foi removido deste branch. Ele continua no `master` e no histórico do
+git (ex.: `git show 715ce03:Nienow.Shinrikai.Kanji/KanjiManager.cs`). O comportamento dos
+algoritmos foi preservado em `tests/Nienow.Shinrikai.Tests/Legacy/` (cópias literais usadas como
+oráculo nos testes).
 
 ## Estrutura
 
 ```
-port/
-├── Shinrikai.sln
+.
+├── Nienow.Shinrikai.sln
 ├── Nienow.Helper/               Monitor, ShuffleList, CleanText
 ├── Nienow.Shinrikai.Core/       Enums, Response e Adaptive/ (os 4 algoritmos como funções puras)
-├── Nienow.DataBaseConn/         Conexão Firebird + helpers ADO.NET 100% parametrizados
-├── Nienow.Shinrikai.User/       Usuários, login, papéis (A/T/S)
-├── Nienow.Shinrikai.Vocabulary/ Módulo piloto: repositório + serviço sem estado
+├── Nienow.DataBaseConn/         Firebird + helpers ADO.NET 100% parametrizados; MonitorStore/KnowledgeStore
+├── Nienow.Shinrikai.User/       Usuários, login, cadastro, papéis (A/T/S), notificações de ajuda
+├── Nienow.Shinrikai.Vocabulary/ Vocabulário + Transcrição
+├── Nienow.Shinrikai.Kanji/      Leitura de kanjis + cadastro
+├── Nienow.Shinrikai.Grammar/    Mapa adaptativo de gramática + cadastro
+├── Nienow.Shinrikai.Text/       Leitura com stretchtext + cadastro
+├── Nienow.Shinrikai.Exercises/  Exercícios (ordenação adaptativa) + cadastro
+├── Nienow.Shinrikai.Dictionary/ Dicionário
 ├── Nienow.Shinrikai.Monitoring/ Log de interações (INTERACTIONS)
-├── Nienow.Shinrikai/            API ASP.NET Core 8 (JWT, Swagger, serve o SPA)
+├── Nienow.Shinrikai/            API ASP.NET Core 10 em Kestrel (JWT, Swagger, serve o SPA)
 ├── tests/Nienow.Shinrikai.Tests xUnit — inclui oráculo com cópia literal do código original
 └── web/                         React + Vite + TipTap
 ```
 
-## Status
+## Paridade com o sistema original
 
-| Fase | Situação |
+Todas as telas, ações e regras do MVC 5 têm equivalente:
+
+| Original (MVC 5) | Novo (rota React → API) |
 |---|---|
-| 1. Solution .NET 8, `Program.cs`, `appsettings.json` | ✅ |
-| 2. Firebird + SQL parametrizado | ✅ para User, Vocabulary, Monitoring · ⏳ Grammar, Kanji, Text, Exercises, Dictionary |
-| 3. JWT | ✅ |
-| 4. Front React | ✅ login + vocabulário · ⏳ demais módulos |
-| 5. Editor TipTap | ✅ protótipo (`/editor`): furigana + link de vocabulário |
-| 6. Deploy | ⏳ |
+| Home/Index | `/` |
+| Home/About | `/sobre` |
+| Login/Index (login) · Login/Logout | `/login` → `POST /api/auth/login` · `POST /api/auth/logout` |
+| Login/Index (cadastro) · Login/SignUp | `/login` → "Cadastre-se" → `POST /api/auth/signup` |
+| Home/GetNotification · DeclareUnderstanding (Ajuda 1, 3–7) | botão **?** em cada tela → `/api/notifications/{id}` |
+| Transcription/Index (+ Generate/Next/Previous/Reload/Check/ShowPageStatus) | `/transcricao` → `/api/transcription/*` |
+| Transcription/SearchKanjiWord | `GET /api/transcription/kanji-words` (usado no editor de textos) |
+| Vocabulary/Index (+ ações de estudo) | `/vocabulario` → `/api/vocabulary/*` |
+| Vocabulary/Register · AddWord · GetWord | `/professor/vocabulario` → `/api/vocabulary/words` |
+| Kanjis/Index (+ GenerateLists/Next/Previous/ReloadList/Check) | `/kanjis` → `/api/kanjis/*` |
+| Kanjis/Register · AddKanji · UpdateKanji · GetKanji | `/professor/kanjis` → `/api/kanjis` |
+| Grammar/Index · GetGrammar · GetRequisites · DeclareKnowledge | `/gramatica` → `/api/grammar/*` (timer de 20 s) |
+| Grammar/Register · AddGrammar · ListAllGrammars | `/professor/gramatica` → `/api/grammar`, `/api/grammar/all` |
+| Text/Index · GetText · DeclareKnowledge · RegisterLackOfKnowledge | `/textos` → `/api/texts/*` (stretchtext, timer de 20 s) |
+| Text/Register · AddText | `/professor/textos` → `/api/texts` |
+| Exercises/Index · GetExercise · CheckAnswer | `/exercicios?grammarId=&textId=` → `/api/exercises/*` |
+| Exercises/Register · AddExercise | `/professor/exercicios?id=&grammarId=&textId=` → `/api/exercises` |
+| Dictionary/Index · Search · GetImage · GetAudio | `/dicionario` → `/api/dictionary/search`, mídia em `/api/vocabulary/words/{id}/{image\|audio}/{slot}` |
+| Registro em INTERACTIONS (todas as telas) | mantido, com as mesmas telas/ações |
+| `bootstrap.dialogs` / `bootstrap.image` | `components/Dialogs.tsx` (alerta, erro, info, sucesso, pergunta, imagem) |
+| Logo (`Content/Images/Logo.png`) | `web/public/logo.png` (também favicon) |
 
-Os 4 algoritmos de adaptabilidade (seção 4 do documento) já estão portados em
-`Nienow.Shinrikai.Core/Adaptive` e testados 1:1 contra o original, mesmo para módulos cuja
-API ainda não foi portada.
+Não foram portados: o menu lateral do `_Layout` (template de exemplo com "Jhon Smith", "E-commerce",
+"Dashboard" — sem função no sistema) e o menu "Administrador" que já estava comentado no original.
 
 ## Rodando
 
 ```bash
 # testes
-dotnet test port/Shinrikai.sln
+dotnet test Nienow.Shinrikai.sln
 
 # API (http://localhost:5080, Swagger em /swagger)
-dotnet user-secrets --project port/Nienow.Shinrikai set "ConnectionStrings:ShinrikaiDB" "character set=UTF8;initial catalog=C:\caminho\SHINRIKAI.FDB;data source=localhost;port=3050;dialect=3;user id=SYSDBA;password=..."
-dotnet run --project port/Nienow.Shinrikai
+dotnet user-secrets --project Nienow.Shinrikai set "ConnectionStrings:ShinrikaiDB" "character set=UTF8;initial catalog=C:\caminho\SHINRIKAI.FDB;data source=localhost;port=3050;dialect=3;user id=SYSDBA;password=..."
+dotnet run --project Nienow.Shinrikai
 
 # front (http://localhost:5173, /api é encaminhado para a 5080)
-npm --prefix port/web install
-npm --prefix port/web run dev
+npm --prefix web install
+npm --prefix web run dev
 ```
 
 Em produção, `Jwt:Key` (≥ 32 bytes) e a connection string vêm de variáveis de ambiente
-(`Jwt__Key`, `ConnectionStrings__ShinrikaiDB`). `npm run build` publica o SPA em
-`Nienow.Shinrikai/wwwroot`, servido pela própria API.
+(`Jwt__Key`, `ConnectionStrings__ShinrikaiDB`).
 
-### Banco: conversão de ODS 11 → 13
+### Hospedagem (Kestrel)
 
-O `SHINRIKAI.FDB` existente é **ODS 11.2 (Firebird 2.5)**. O Firebird 4 recusa abrir
+A API roda direto no **Kestrel**, sem IIS (o `Web.config` não existe mais). Os endpoints ficam na
+seção `Kestrel` do `appsettings.json` e podem ser sobrescritos no ambiente:
+
+```bash
+# porta/host
+Kestrel__Endpoints__Http__Url=http://0.0.0.0:8080
+# HTTPS direto no Kestrel
+Kestrel__Endpoints__Https__Url=https://0.0.0.0:8443
+Kestrel__Endpoints__Https__Certificate__Path=/caminho/cert.pfx
+Kestrel__Endpoints__Https__Certificate__Password=...
+```
+
+Atrás de um proxy reverso (nginx, Caddy, IIS como proxy), defina `ReverseProxy__Enabled=true`
+para respeitar `X-Forwarded-For`/`X-Forwarded-Proto`. Publicação:
+`dotnet publish Nienow.Shinrikai -c Release -o out` e então `dotnet out/Nienow.Shinrikai.dll`.
+`npm --prefix web run build` publica o SPA em `Nienow.Shinrikai/wwwroot`, servido pela própria API.
+
+### Banco novo (vazio)
+
+`database/` cria o banco no Firebird local com o mesmo esquema do original (16 tabelas, 15
+generators), os textos de ajuda e uma lista inicial de assuntos, e grava a connection string no
+perfil `Kestrel` do `launchSettings.json` (que o Visual Studio e o `dotnet run` aplicam ao processo)
+e em user-secrets — sem alterar código. Para apontar para outro banco depois:
+`.\database\configure-connection.ps1 -Path <arquivo.fdb>`.
+
+```powershell
+.\database\create-database.ps1                       # cria database\data\SHINRIKAI.FDB (ignorado pelo git)
+# reinicie a API, cadastre-se pela tela de login e então:
+.\database\promote-user.ps1 -Login <seu-login>       # vira administrador (menu Professor)
+```
+
+Parâmetros: `-Path`, `-User`, `-Password`, `-Server`, `-Port`, `-Isql`, `-SkipUserSecrets`.
+O cadastro pela tela sempre cria alunos e não há tela de papéis nem de assuntos (os menus
+"Controle de usuários" e "Cadastro de assuntos" estavam desativados no original) — para isso são
+`promote-user.ps1` e o `INSERT` comentado em `database/seed.sql`.
+
+### Banco antigo: conversão de ODS 11 → 13
+
+Para usar os dados do sistema original em vez do banco novo: o `SHINRIKAI.FDB` existente é
+**ODS 11.2 (Firebird 2.5)**. O Firebird 4 recusa abrir
 (`unsupported on-disk structure … found 11.2, support 13.0`). É preciso um backup com o
 `gbak` do 2.5 e restore com o do 4:
 
@@ -66,22 +131,55 @@ gbak -b -user SYSDBA -password masterkey SHINRIKAI.FDB shinrikai.fbk
 gbak -c -user SYSDBA -password <senha> shinrikai.fbk SHINRIKAI_FB4.FDB
 ```
 
+O esquema do banco não muda: o port usa as mesmas tabelas, colunas e generators do original.
+
+## Editor (cadastros de Gramática e Texto)
+
+Substitui o CKEditor 4 por TipTap sem perder conteúdo:
+
+- Formatação equivalente ao CKEditor padrão: negrito, itálico, sublinhado, tachado, sub/sobrescrito,
+  cor, marca-texto, títulos, listas, citação, alinhamento, links, imagens, tabelas, linha horizontal.
+- **Modo HTML** (o "Código-fonte" do CKEditor): edita o HTML cru, sem normalização.
+- **Verificação de fidelidade:** ao abrir um conteúdo existente, compara tags, atributos e texto do
+  HTML original com o que o editor visual produziria. Se algo fosse descartado (ex.: `<font>`,
+  `style` desconhecido), abre direto em modo HTML com aviso — o conteúdo salvo fica idêntico ao do
+  banco, a menos que seja editado.
+- **字 Furigana** e **🔗 Vocabulário** (só em Textos): geram `<ruby>` e
+  `<span class="stretchText" data-id="N">`, exatamente o que o backend reconhece. Antes era
+  notação manual `漢字「かんじ」` e HTML cru; a notação antiga é convertida ao abrir.
+
 ## Decisões e diferenças em relação ao original
 
-- **Sem estado de sessão.** O `VocabularyManager` vivia na `Session` do MVC. Agora
-  `POST /api/vocabulary/sessions` devolve todas as páginas (10 itens, embaralhadas) e o cliente
-  navega; `POST /api/vocabulary/check` corrige por `WordId` no servidor e aplica o contador.
+Regras preservadas 1:1 (testadas contra cópias literais do código original):
+
 - **Variação de fragmento — não é idêntica entre módulos.** Vocabulário e Kanji contam sucesso
   quando `Counter <= 1`; Transcrição só quando `Counter <= 0`; o clique no stretchtext conta
-  falha só se `Counter == 0`. O port mantém cada variante (`FragmentVariation.Apply*`).
-- **`HasEnoughLevel`** foi reduzido a `content <= user + (restrict ? 0 : 1)`; a equivalência
-  com o `switch` original é verificada em todas as 72 combinações.
-- **Login** comparava a senha dentro do SQL concatenado (SQL injection). Agora a senha é lida por
-  login parametrizado e comparada em tempo constante. ⚠️ A base guarda senhas **em texto puro**;
-  migrar para hash exige aumentar `USERS.USR_PASS` (pendente).
-- **Cadastro de usuário:** o original só checava se "repetir senha" estava vazio; agora compara.
-- **Cadastro de vocabulário:** a validação das possibilidades 2 e 3 tinha condições contraditórias;
-  agora, se qualquer campo da possibilidade é preenchido, assunto e tradução são obrigatórios.
-- **Editor:** furigana e palavra de vocabulário são *nodes* TipTap (não *marks*), porque `<ruby>`
-  tem dois textos (base e leitura). O HTML gerado é exatamente o que a regex do backend
-  (`Stretchtext.ApplyKnowledge`) reconhece. A notação antiga `漢字「かんじ」` é convertida ao abrir.
+  falha só se `Counter == 0`; exercícios só acumulam acertos/erros.
+- **`HasEnoughLevel`** reduzido a `content <= user + (restrict ? 0 : 1)`; equivalência com o
+  `switch` original verificada nas 72 combinações.
+- **Kanji:** `CheckReading` (soma 1/2/4 por posição; respostas repetidas não contam) e a regra
+  "acerta só com todas as leituras" — verificados em 1029 combinações.
+- **Dicionário:** mesma ordem dos resultados (exato → começa com → contém), sensível a maiúsculas.
+
+Correções de bugs do original (o comportamento pretendido foi mantido):
+
+- **Sem estado de sessão.** Os *Managers* viviam na `Session` do MVC. Agora a API devolve todas as
+  páginas (10 itens, embaralhadas) e corrige por ID, no servidor.
+- **SQL injection** em praticamente todas as consultas (inclusive o login). Tudo parametrizado.
+- **Senhas em texto puro** na base. ⚠️ Mantido por compatibilidade; migrar para hash exige
+  aumentar `USERS.USR_PASS` (pendente).
+- **Cadastro de usuário:** "repetir senha" agora é comparada e a senha mínima de 5 dígitos (que só
+  existia no navegador) também vale no servidor.
+- **Cadastro de vocabulário:** a validação das formas 2 e 3 tinha condições contraditórias; agora,
+  se qualquer campo da forma é preenchido, assunto e tradução são obrigatórios.
+- **Kanji:** o cadastro gravava o nível em minúsculas ("n5") e o estudo filtrava por "N5" — kanjis
+  cadastrados pela tela não apareciam no estudo. Agora o nível é normalizado e comparado sem caixa.
+  O original também recusava kanjis fora do BMP (`Length == 1`).
+- **Transcrição:** palavras sem kanji no assunto eram puladas só na exibição, desalinhando a
+  correção (feita por posição). Agora ficam fora da lista e a correção é por ID.
+- **Exercícios:** `GetExercise` enviava a resposta certa ao navegador; agora ela fica no servidor.
+  A mensagem de erro citava o número da opção (que aparece embaralhada); agora cita o texto.
+- **Dicionário:** só servia a imagem/áudio da forma 1; agora usa a primeira forma que tiver mídia.
+- **Stretchtext:** o `DBText` inseria em `TRL_MONITOR` com o generator de outra tabela
+  (`VOCMONITOR_ID_GEN`); agora usa o da própria tabela (`TRLCMONITOR_ID_GEN`).
+- **INTERACTIONS:** a abertura de exercícios de texto registrava o ID da gramática; corrigido.
