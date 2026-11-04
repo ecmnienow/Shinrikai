@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nienow.DataBaseConn;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Core.Adaptive;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Exercises
 {
@@ -26,14 +26,7 @@ namespace Nienow.Shinrikai.Exercises
         public int RightAnswer { get; set; }
         public EJLPT Level { get; set; } = EJLPT.None;
 
-        public string? OptionText(int option) => option switch
-        {
-            1 => Option1,
-            2 => Option2,
-            3 => Option3,
-            4 => Option4,
-            _ => null,
-        };
+        [JsonIgnore] public string[] Options => [Option1, Option2, Option3, Option4];
     }
 
     /// <summary>
@@ -51,37 +44,26 @@ namespace Nienow.Shinrikai.Exercises
         Task<TExercise?> GetAsync(int id, CancellationToken ct = default);
         Task AddAsync(TExercise exercise, CancellationToken ct = default);
         Task UpdateAsync(TExercise exercise, CancellationToken ct = default);
-        Task<Monitor?> GetMonitorAsync(int userId, int exerciseId, CancellationToken ct = default);
-        Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default);
     }
 
     /// <summary>Port de DBExercise.cs (SQL parametrizado).</summary>
-    public sealed class ExerciseRepository(IShinrikaiDb db, IMonitorStore monitors) : IExerciseRepository
+    public sealed class ExerciseRepository(IShinrikaiDb db) : IExerciseRepository
     {
         /// <summary>ListAllExercises: exercícios gerais e de gramática (os de texto ficam de fora).</summary>
-        public async Task<IReadOnlyList<(int Id, EJLPT Level)>> ListAllAsync(CancellationToken ct = default)
+        public Task<IReadOnlyList<(int Id, EJLPT Level)>> ListAllAsync(CancellationToken ct = default) =>
+            db.QueryAsync("SELECT EXR_ID, EXR_LEVEL FROM EXERCISES WHERE EXR_TXT_ID IS NULL", MapIdLevel, ct);
+
+        public Task<IReadOnlyList<(int Id, EJLPT Level)>> ListAsync(int grammarId, int textId, CancellationToken ct = default)
         {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync("SELECT EXR_ID, EXR_LEVEL FROM EXERCISES WHERE EXR_TXT_ID IS NULL", MapIdLevel, ct);
+            var (column, id) = grammarId > 0 ? ("EXR_GRM_ID", grammarId) : ("EXR_TXT_ID", textId);
+            return db.QueryAsync($"SELECT EXR_ID, EXR_LEVEL FROM EXERCISES WHERE {column} = @ID", MapIdLevel, ct, ("@ID", id));
         }
 
-        public async Task<IReadOnlyList<(int Id, EJLPT Level)>> ListAsync(int grammarId, int textId, CancellationToken ct = default)
-        {
-            var (where, parameter) = grammarId > 0 ? ("EXR_GRM_ID = @ID", grammarId) : ("EXR_TXT_ID = @ID", textId);
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"SELECT EXR_ID, EXR_LEVEL FROM EXERCISES WHERE {where}", MapIdLevel, ct, ("@ID", parameter));
-        }
+        public Task<TExercise?> GetAsync(int id, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync("SELECT * FROM EXERCISES WHERE EXR_ID = @ID", Map, ct, ("@ID", id));
 
-        public async Task<TExercise?> GetAsync(int id, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync("SELECT * FROM EXERCISES WHERE EXR_ID = @ID", Map, ct, ("@ID", id));
-        }
-
-        public async Task AddAsync(TExercise e, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task AddAsync(TExercise e, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 """
                 INSERT INTO EXERCISES (
                   EXR_ID, EXR_GRM_ID, EXR_TXT_ID, EXR_TEXT, EXR_OPTION_1, EXR_OPTION_2,
@@ -92,12 +74,9 @@ namespace Nienow.Shinrikai.Exercises
                 )
                 """,
                 ct, Parameters(e));
-        }
 
-        public async Task UpdateAsync(TExercise e, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task UpdateAsync(TExercise e, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 """
                 UPDATE EXERCISES SET
                   EXR_GRM_ID = @GRM, EXR_TXT_ID = @TXT, EXR_TEXT = @QST, EXR_OPTION_1 = @OP1, EXR_OPTION_2 = @OP2,
@@ -105,13 +84,6 @@ namespace Nienow.Shinrikai.Exercises
                 WHERE EXR_ID = @ID
                 """,
                 ct, [.. Parameters(e), ("@ID", e.ID)]);
-        }
-
-        public Task<Monitor?> GetMonitorAsync(int userId, int exerciseId, CancellationToken ct = default) =>
-            monitors.GetAsync(MonitorTables.Exercise, userId, exerciseId, ct);
-
-        public Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default) =>
-            monitors.SaveAsync(MonitorTables.Exercise, monitor, ct);
 
         private static (string, object?)[] Parameters(TExercise e) =>
         [
@@ -126,10 +98,7 @@ namespace Nienow.Shinrikai.Exercises
             ("@LVL", e.Level.ToString()),
         ];
 
-        private static EJLPT ParseLevel(string? value) =>
-            Enum.TryParse<EJLPT>(value ?? "None", true, out var lvl) && Enum.IsDefined(lvl) ? lvl : EJLPT.None;
-
-        private static (int, EJLPT) MapIdLevel(DbDataReader r) => (r.GetInt("EXR_ID"), ParseLevel(r.GetNullableString("EXR_LEVEL")));
+        private static (int, EJLPT) MapIdLevel(DbDataReader r) => (r.GetInt("EXR_ID"), JlptLevel.Parse(r.GetNullableString("EXR_LEVEL")));
 
         private static TExercise Map(DbDataReader r) => new()
         {
@@ -142,15 +111,13 @@ namespace Nienow.Shinrikai.Exercises
             Option3 = r.GetNullableString("EXR_OPTION_3") ?? string.Empty,
             Option4 = r.GetNullableString("EXR_OPTION_4") ?? string.Empty,
             RightAnswer = r.GetInt("EXR_RIGHT"),
-            Level = ParseLevel(r.GetNullableString("EXR_LEVEL")),
+            Level = JlptLevel.Parse(r.GetNullableString("EXR_LEVEL")),
         };
     }
 
     /// <summary>Port de ExercisesManager.cs + ExercisesController.</summary>
-    public sealed class ExercisesService(IExerciseRepository repository, TimeProvider? clock = null)
+    public sealed class ExercisesService(IExerciseRepository repository, IMonitorStore monitors, TimeProvider? clock = null)
     {
-        private readonly TimeProvider _clock = clock ?? TimeProvider.System;
-
         /// <summary>
         /// Index(grammarId, textId): de um conteúdo (gramática XOR texto) → todos os exercícios dele
         /// liberados para o nível, embaralhados; sem filtro → 10 exercícios gerais (técnica 4.4).
@@ -160,26 +127,15 @@ namespace Nienow.Shinrikai.Exercises
             if (grammarId > 0 && textId > 0)
                 throw new ArgumentException("Informe gramática ou texto, não os dois.");
 
-            if (grammarId > 0 ^ textId > 0)
-                return AdaptiveOrdering.Select(await repository.ListAsync(grammarId, textId, ct), userLevel, rng: rng);
-
-            return AdaptiveOrdering.Select(await repository.ListAllAsync(ct), userLevel, AdaptiveOrdering.AllExercisesTake, rng);
+            return grammarId > 0 || textId > 0
+                ? AdaptiveOrdering.Select(await repository.ListAsync(grammarId, textId, ct), userLevel, rng: rng)
+                : AdaptiveOrdering.Select(await repository.ListAllAsync(ct), userLevel, AdaptiveOrdering.AllExercisesTake, rng);
         }
 
-        public async Task<ExerciseQuestion?> GetQuestionAsync(int id, CancellationToken ct = default)
-        {
-            var e = await repository.GetAsync(id, ct);
-            if (e is null)
-                return null;
-
-            return new ExerciseQuestion(e.ID, e.Question,
-            [
-                new ExerciseOption(1, e.Option1),
-                new ExerciseOption(2, e.Option2),
-                new ExerciseOption(3, e.Option3),
-                new ExerciseOption(4, e.Option4),
-            ]);
-        }
+        public async Task<ExerciseQuestion?> GetQuestionAsync(int id, CancellationToken ct = default) =>
+            await repository.GetAsync(id, ct) is { } e
+                ? new ExerciseQuestion(e.ID, e.Question, e.Options.Select((text, i) => new ExerciseOption(i + 1, text)).ToList())
+                : null;
 
         public Task<TExercise?> GetAsync(int id, CancellationToken ct = default) => repository.GetAsync(id, ct);
 
@@ -194,20 +150,18 @@ namespace Nienow.Shinrikai.Exercises
                 return null;
 
             var correct = exercise.RightAnswer == answer;
-            var monitor = await repository.GetMonitorAsync(userId, exercise.ID, ct) ?? new Monitor { UsrID = userId, VcbID = exercise.ID };
-            FragmentVariation.ApplyExercise(monitor, correct, _clock.GetLocalNow().DateTime);
-            await repository.SaveMonitorAsync(monitor, ct);
+            var now = (clock ?? TimeProvider.System).GetLocalNow().DateTime;
+            await monitors.UpdateAsync(MonitorTables.Exercise, userId, exercise.ID, m => FragmentVariation.ApplyExercise(m, correct, now), ct);
 
-            return correct
-                ? Response.Ok()
-                : Response.Fail($"A resposta correta era: \"{exercise.OptionText(exercise.RightAnswer) ?? exercise.RightAnswer.ToString()}\"");
+            var rightText = exercise.RightAnswer is >= 1 and <= 4 ? exercise.Options[exercise.RightAnswer - 1] : exercise.RightAnswer.ToString();
+            return correct ? Response.Ok() : Response.Fail($"A resposta correta era: \"{rightText}\"");
         }
 
         public static Response Validate(TExercise e)
         {
             if (string.IsNullOrWhiteSpace(e.Question))
                 return Response.Fail("É obrigatório que informe uma questão para o exercício a ser cadastrado.");
-            if (new[] { e.Option1, e.Option2, e.Option3, e.Option4 }.Any(string.IsNullOrWhiteSpace))
+            if (e.Options.Any(string.IsNullOrWhiteSpace))
                 return Response.Fail("Todas as opções de respostas devem ser preenchidas.");
             if (e.RightAnswer is < 1 or > 4)
                 return Response.Fail("Nenhuma resposta foi marcada como correta.");
@@ -223,17 +177,10 @@ namespace Nienow.Shinrikai.Exercises
             if (!validation.OK)
                 return validation;
 
-            if (exercise.ID == 0)
-            {
-                await repository.AddAsync(exercise, ct);
-                return Response.Ok("Exercício cadastrado com sucesso!");
-            }
-
-            if (await repository.GetAsync(exercise.ID, ct) is null)
-                return Response.Fail("Exercício não encontrado.");
-
-            await repository.UpdateAsync(exercise, ct);
-            return Response.Ok("Exercício alterado com sucesso!");
+            return await Response.SaveAsync("Exercício", exercise.ID,
+                () => repository.AddAsync(exercise, ct),
+                async () => await repository.GetAsync(exercise.ID, ct) is not null,
+                () => repository.UpdateAsync(exercise, ct));
         }
     }
 }

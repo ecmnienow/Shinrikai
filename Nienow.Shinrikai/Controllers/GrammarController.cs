@@ -12,19 +12,16 @@ using Nienow.Shinrikai.User;
 namespace Nienow.Shinrikai.Controllers
 {
     /// <summary>Port de GrammarController (mapa adaptativo + cadastro).</summary>
-    [ApiController]
     [Route("api/grammar")]
-    [Authorize]
-    public sealed class GrammarController(GrammarService grammar, UserService users, IMonitoringService monitoring) : ControllerBase
+    public sealed class GrammarController(GrammarService grammar, UserService users, IMonitoringService monitoring)
+        : ShinrikaiController(monitoring, "Estudo de gramatica")
     {
-        private const string Screen = "Estudo de gramatica";
-
         /// <summary>Index: o mapa, agrupado por nível, com cada conteúdo liberado ou não para o aluno.</summary>
         [HttpGet]
         public async Task<IReadOnlyList<GrammarMapGroup>> Map(CancellationToken ct)
         {
             await Log("Pagina inicial", null, ct);
-            return await grammar.GetMapAsync(User.UserId(), await CurrentLevelAsync(ct), ct);
+            return await grammar.GetMapAsync(User.UserId(), await CurrentLevelAsync(users, ct), ct);
         }
 
         [HttpGet("{id:int}")]
@@ -42,7 +39,7 @@ namespace Nienow.Shinrikai.Controllers
         public async Task<ActionResult<GrammarRequisites>> Requisites(int id, CancellationToken ct)
         {
             await Log("Ver requisitos", id.ToString(), ct);
-            return await grammar.GetRequisitesAsync(id, await CurrentLevelAsync(ct), ct) is { } r ? r : NotFound();
+            return await grammar.GetRequisitesAsync(id, await CurrentLevelAsync(users, ct), ct) is { } r ? r : NotFound();
         }
 
         /// <summary>Chamado pelo front após 20 s de leitura (AdaptiveMap.ReadingTimeToDeclareKnowledge).</summary>
@@ -68,17 +65,7 @@ namespace Nienow.Shinrikai.Controllers
 
         [HttpPost]
         [Authorize(Roles = Roles.ContentEditors)]
-        public async Task<ActionResult<Core.Response>> Save(GrammarForm form, CancellationToken ct)
-        {
-            var response = await grammar.SaveAsync(form, ct);
-            return response.OK ? response : BadRequest(response);
-        }
-
-        /// <summary>O nível vem do banco (não do token), para refletir alterações sem novo login.</summary>
-        private async Task<EJLPT> CurrentLevelAsync(CancellationToken ct) =>
-            (await users.GetUserAsync(User.Identity!.Name!, ct))?.JLPT ?? User.Jlpt();
-
-        private Task Log(string action, string? option, CancellationToken ct) =>
-            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
+        public async Task<ActionResult<Response>> Save(GrammarForm form, CancellationToken ct) =>
+            Result(await grammar.SaveAsync(form, ct));
     }
 }

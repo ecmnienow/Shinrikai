@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { api, fire } from '../api/client'
 import { Modal } from './Dialogs'
 
 /** IDs das notificações de ajuda de cada tela (tabela NOTIFICATIONS). */
@@ -39,7 +39,7 @@ export function HelpButton({ id }: { id: number }) {
 
   async function understood() {
     setMessage(null)
-    await api(`/notifications/${id}/understood`, { method: 'POST' }).catch(() => {})
+    fire(`/notifications/${id}/understood`)
   }
 
   return (

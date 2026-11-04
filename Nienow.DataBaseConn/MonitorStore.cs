@@ -51,12 +51,21 @@ namespace Nienow.DataBaseConn
         Task SaveAsync(MonitorTable table, Monitor monitor, CancellationToken ct = default);
     }
 
+    public static class MonitorStoreExtensions
+    {
+        /// <summary>Lê (ou cria) o monitor do usuário para o item, aplica a regra e grava (o ManageMistake do original).</summary>
+        public static async Task UpdateAsync(this IMonitorStore store, MonitorTable table, int userId, int itemId, Action<Monitor> apply, CancellationToken ct = default)
+        {
+            var monitor = await store.GetAsync(table, userId, itemId, ct) ?? new Monitor { UsrID = userId, VcbID = itemId };
+            apply(monitor);
+            await store.SaveAsync(table, monitor, ct);
+        }
+    }
+
     public sealed class MonitorStore(IShinrikaiDb db) : IMonitorStore
     {
-        public async Task<Monitor?> GetAsync(MonitorTable t, int userId, int itemId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync(
+        public Task<Monitor?> GetAsync(MonitorTable t, int userId, int itemId, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync(
                 $"SELECT * FROM {t.Table} WHERE {t.ItemColumn} = @ITEM AND {t.User} = @USR",
                 r => new Monitor
                 {
@@ -69,7 +78,6 @@ namespace Nienow.DataBaseConn
                     LastHittedTime = r.GetDateTimeOrDefault(t.LastHit),
                 },
                 ct, ("@ITEM", itemId), ("@USR", userId));
-        }
 
         public async Task<IReadOnlyDictionary<int, int>> GetCountersAsync(MonitorTable t, int userId, IReadOnlyList<int> itemIds, CancellationToken ct = default)
         {
@@ -77,27 +85,24 @@ namespace Nienow.DataBaseConn
             if (itemIds.Count == 0 || !t.HasCounter)
                 return result;
 
-            var (inSql, parameters) = DbExtensions.InClause(itemIds.Distinct().ToList());
-            await using var conn = await db.OpenAsync(ct);
-            var rows = await conn.QueryAsync(
+            var (inSql, parameters) = DbExtensions.InClause(itemIds);
+            var rows = await db.QueryAsync(
                 $"SELECT {t.ItemColumn}, {t.Counter} FROM {t.Table} WHERE {t.User} = @USR AND {t.ItemColumn} IN ({inSql})",
                 r => (Item: r.GetInt(t.ItemColumn), Counter: r.GetInt(t.Counter)),
-                ct, [("@USR", (object?)userId), .. parameters]);
+                ct, [("@USR", userId), .. parameters]);
 
             foreach (var (item, counter) in rows)
                 result.TryAdd(item, counter);
-
             return result;
         }
 
-        public async Task SaveAsync(MonitorTable t, Monitor m, CancellationToken ct = default)
+        public Task SaveAsync(MonitorTable t, Monitor m, CancellationToken ct = default)
         {
-            await using var conn = await db.OpenAsync(ct);
+            (string, object?)[] values = [("@FAI", m.FailCounter), ("@SUC", m.SuccessCounter), ("@HIT", m.LastHittedTime), ("@CNT", m.Counter)];
             if (m.IsNew)
             {
-                var counterColumn = t.HasCounter ? $"{t.Counter}, " : "";
-                var counterValue = t.HasCounter ? "@CNT, " : "";
-                await conn.ExecuteInTransactionAsync(
+                var (counterColumn, counterValue) = t.HasCounter ? ($"{t.Counter}, ", "@CNT, ") : ("", "");
+                return db.ExecuteAsync(
                     $"""
                     INSERT INTO {t.Table} (
                       {t.Id}, {t.User}, {t.ItemColumn}, {counterColumn}{t.Fails}, {t.Successes}, {t.LastHit}
@@ -105,38 +110,18 @@ namespace Nienow.DataBaseConn
                       GEN_ID({t.Generator}, 1), @USR, @ITEM, {counterValue}@FAI, @SUC, @HIT
                     )
                     """,
-                    ct, Parameters(m, t.HasCounter, includeIds: true));
+                    ct, [.. Used(values, t), ("@USR", m.UsrID), ("@ITEM", m.VcbID)]);
             }
-            else
-            {
-                var counterSet = t.HasCounter ? $"{t.Counter} = @CNT, " : "";
-                await conn.ExecuteInTransactionAsync(
-                    $"UPDATE {t.Table} SET {counterSet}{t.Fails} = @FAI, {t.Successes} = @SUC, {t.LastHit} = @HIT WHERE {t.Id} = @ID",
-                    ct, Parameters(m, t.HasCounter, includeIds: false));
-            }
+
+            var counterSet = t.HasCounter ? $"{t.Counter} = @CNT, " : "";
+            return db.ExecuteAsync(
+                $"UPDATE {t.Table} SET {counterSet}{t.Fails} = @FAI, {t.Successes} = @SUC, {t.LastHit} = @HIT WHERE {t.Id} = @ID",
+                ct, [.. Used(values, t), ("@ID", m.ID)]);
         }
 
-        private static (string, object?)[] Parameters(Monitor m, bool hasCounter, bool includeIds)
-        {
-            var list = new List<(string, object?)>
-            {
-                ("@FAI", m.FailCounter),
-                ("@SUC", m.SuccessCounter),
-                ("@HIT", m.LastHittedTime),
-            };
-            if (hasCounter)
-                list.Add(("@CNT", m.Counter));
-            if (includeIds)
-            {
-                list.Add(("@USR", m.UsrID));
-                list.Add(("@ITEM", m.VcbID));
-            }
-            else
-            {
-                list.Add(("@ID", m.ID));
-            }
-            return list.ToArray();
-        }
+        /// <summary>Sem coluna de contador, @CNT não vai no comando.</summary>
+        private static IEnumerable<(string, object?)> Used((string Name, object? Value)[] values, MonitorTable t) =>
+            values.Where(v => t.HasCounter || v.Name != "@CNT");
     }
 
     /// <summary>
@@ -170,35 +155,24 @@ namespace Nienow.DataBaseConn
     {
         public async Task DeclareAsync(KnowledgeTable t, int userId, int itemId, DateTime now, CancellationToken ct = default)
         {
-            await using var conn = await db.OpenAsync(ct);
-            var existing = await conn.ScalarAsync(
+            var existing = await db.ScalarAsync(
                 $"SELECT {t.Id} FROM {t.Table} WHERE {t.ItemColumn} = @ITEM AND {t.User} = @USR",
                 ct, ("@ITEM", itemId), ("@USR", userId));
 
             if (existing is not null)
-            {
-                await conn.ExecuteInTransactionAsync(
-                    $"UPDATE {t.Table} SET {t.Access} = @ACC WHERE {t.Id} = @ID",
+                await db.ExecuteAsync($"UPDATE {t.Table} SET {t.Access} = @ACC WHERE {t.Id} = @ID",
                     ct, ("@ACC", now), ("@ID", Convert.ToInt32(existing)));
-            }
             else
-            {
-                await conn.ExecuteInTransactionAsync(
+                await db.ExecuteAsync(
                     $"""
                     INSERT INTO {t.Table} ({t.Id}, {t.User}, {t.ItemColumn}, {t.Knowledge}, {t.Access})
                     VALUES (GEN_ID({t.Generator}, 1), @USR, @ITEM, 'S', @ACC)
                     """,
                     ct, ("@USR", userId), ("@ITEM", itemId), ("@ACC", now));
-            }
         }
 
-        public async Task<IReadOnlySet<int>> GetDeclaredAsync(KnowledgeTable t, int userId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            var ids = await conn.QueryAsync(
-                $"SELECT {t.ItemColumn} FROM {t.Table} WHERE {t.User} = @USR",
-                r => r.GetInt(t.ItemColumn), ct, ("@USR", userId));
-            return ids.ToHashSet();
-        }
+        public async Task<IReadOnlySet<int>> GetDeclaredAsync(KnowledgeTable t, int userId, CancellationToken ct = default) =>
+            (await db.QueryAsync($"SELECT {t.ItemColumn} FROM {t.Table} WHERE {t.User} = @USR", r => r.GetInt(t.ItemColumn), ct, ("@USR", userId)))
+                .ToHashSet();
     }
 }

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { api, errorMessage, fire } from '../api/client'
 import type { ContentGroup, ContentListItem } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
+import { EditLink, PageTitle } from './common'
 
 /** Tempo de leitura para declarar conhecimento (setTimeout de 20000 ms do original). */
 export const READING_TIME_MS = 20_000
@@ -11,27 +12,29 @@ export const READING_TIME_MS = 20_000
  * esquerda, conteúdo à direita, Anterior/Próximo (pulando os bloqueados), "Exercícios" e o
  * "contador de tempo" que declara o conhecimento após 20 s no mesmo conteúdo.
  */
-export function ContentReader({ title, help, groups, emptyText, loadItem, onLocked, onReadLongEnough, exercisesLink, showExercises, editLink, onContentClick }: {
+export function ContentReader({ basePath, title, help, emptyText, onLocked, exercisesLink, showExercises, editLink, onContentClick }: {
+  /** "/grammar" ou "/texts": lista em GET {basePath}, conteúdo em GET {basePath}/{id}, conhecimento em POST {basePath}/{id}/knowledge. */
+  basePath: string
   title: string
   help: ReactNode
-  groups: ContentGroup[]
   emptyText: string
-  loadItem: (id: number) => Promise<{ title: string; body: string }>
-  onLocked: (item: ContentListItem) => void
-  onReadLongEnough: (id: number) => void
+  onLocked?: (item: ContentListItem) => void
   exercisesLink: (id: number) => string
   /** Gramática: só se houver exercícios; Texto: sempre (como no original). */
   showExercises: (item: ContentListItem) => boolean
   editLink: (id: number) => string
   onContentClick?: (e: MouseEvent<HTMLDivElement>) => void
 }) {
-  const { user } = useAuth()
-  const isEditor = user?.role === 'Administrator' || user?.role === 'Teacher'
+  const [groups, setGroups] = useState<ContentGroup[]>([])
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [active, setActive] = useState<ContentListItem | null>(null)
   const [content, setContent] = useState<{ title: string; body: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const timer = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    api<ContentGroup[]>(basePath).then(setGroups).catch((e) => setError(e.message))
+  }, [basePath])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
@@ -39,31 +42,29 @@ export function ContentReader({ title, help, groups, emptyText, loadItem, onLock
 
   async function select(item: ContentListItem) {
     if (!item.hasEnoughLevel) {
-      onLocked(item)
+      onLocked?.(item)
       return
     }
     setActive(item)
     setOpen((o) => ({ ...o, [item.level]: true }))
     setError(null)
     try {
-      setContent(await loadItem(item.id))
+      setContent(await api<{ title: string; body: string }>(`${basePath}/${item.id}`))
       // TriggerTimeOut: reinicia a cada troca de conteúdo.
       window.clearTimeout(timer.current)
-      timer.current = window.setTimeout(() => onReadLongEnough(item.id), READING_TIME_MS)
+      timer.current = window.setTimeout(() => fire(`${basePath}/${item.id}/knowledge`), READING_TIME_MS)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao carregar.')
+      setError(errorMessage(e, 'Falha ao carregar.'))
     }
   }
 
   function move(delta: number) {
     if (!active) return
-    let i = flat.findIndex((x) => x.id === active.id) + delta
-    while (i >= 0 && i < flat.length) {
+    for (let i = flat.findIndex((x) => x.id === active.id) + delta; i >= 0 && i < flat.length; i += delta) {
       if (flat[i].hasEnoughLevel) {
         select(flat[i])
         return
       }
-      i += delta
     }
   }
 
@@ -88,9 +89,7 @@ export function ContentReader({ title, help, groups, emptyText, loadItem, onLock
                       {!item.hasEnoughLevel && <span aria-hidden="true">🔒 </span>}
                       {item.title}
                     </button>
-                    {isEditor && (
-                      <Link className="icon edit" to={editLink(item.id)} title="Editar" aria-label={`Editar ${item.title}`}>✎</Link>
-                    )}
+                    <EditLink to={editLink(item.id)} label={`Editar ${item.title}`} />
                   </li>
                 ))}
               </ul>
@@ -103,10 +102,7 @@ export function ContentReader({ title, help, groups, emptyText, loadItem, onLock
       </aside>
 
       <section className="reader-content">
-        <div className="page-title">
-          <h1>{content?.title ?? title}</h1>
-          {help}
-        </div>
+        <PageTitle help={help}>{content?.title ?? title}</PageTitle>
         {error && <p className="error">{error}</p>}
         {content ? (
           <div className="card reading" lang="ja" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: content.body }} />

@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nienow.Shinrikai.Auth;
+using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.Vocabulary;
 using Nienow.Shinrikai.Vocabulary.Model;
@@ -13,16 +13,13 @@ namespace Nienow.Shinrikai.Controllers
 {
     public sealed record GenerateTranscriptionRequest(int SubjectId, bool Mistakes);
 
-    public sealed record CheckTranscriptionRequest(IReadOnlyList<TranscriptionAnswer> Answers);
+    public sealed record CheckTranscriptionRequest(IReadOnlyList<VocabularyAnswer> Answers);
 
     /// <summary>Port de TranscriptionController (Transcrição para hiragana).</summary>
-    [ApiController]
     [Route("api/transcription")]
-    [Authorize]
-    public sealed class TranscriptionController(TranscriptionService transcription, IMonitoringService monitoring) : ControllerBase
+    public sealed class TranscriptionController(TranscriptionService transcription, IMonitoringService monitoring)
+        : StudyController(monitoring, "Transcricao de vocabulario")
     {
-        private const string Screen = "Transcricao de vocabulario";
-
         [HttpGet("subjects")]
         public Task<IReadOnlyList<Subject>> Subjects(CancellationToken ct) => transcription.GetSubjectsAsync(ct);
 
@@ -40,27 +37,17 @@ namespace Nienow.Shinrikai.Controllers
         [HttpPost("check")]
         public async Task<ActionResult<IReadOnlyList<VocabularyResult>>> Check(CheckTranscriptionRequest request, CancellationToken ct)
         {
-            if (request.Answers is not { Count: > 0 } || request.Answers.Count > VocabularyService.PageSize)
-                return BadRequest(Core.Response.Fail($"Envie de 1 a {VocabularyService.PageSize} respostas."));
+            if (!IsValidPage(request.Answers?.Count ?? 0))
+                return PageSizeError();
 
-            var results = await transcription.CheckAnswersAsync(User.UserId(), request.Answers, ct);
+            var results = await transcription.CheckAnswersAsync(User.UserId(), request.Answers!, ct);
             await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
             return Ok(results);
-        }
-
-        [HttpPost("interactions")]
-        public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
-        {
-            await Log(request.Action, request.Option, ct);
-            return NoContent();
         }
 
         /// <summary>TranscriptionController.SearchKanjiWord — até 10 palavras com kanji (usado pelo editor de textos).</summary>
         [HttpGet("kanji-words")]
         public Task<IReadOnlyList<TWord>> SearchKanjiWord([FromQuery] string? term, CancellationToken ct) =>
             transcription.SearchKanjiWordAsync(term ?? string.Empty, ct);
-
-        private Task Log(string action, string? option, CancellationToken ct) =>
-            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
     }
 }

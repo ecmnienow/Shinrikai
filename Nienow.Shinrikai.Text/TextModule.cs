@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nienow.DataBaseConn;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Core.Adaptive;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Text
 {
@@ -45,46 +44,29 @@ namespace Nienow.Shinrikai.Text
     /// <summary>Port de DBText.cs (SQL parametrizado).</summary>
     public sealed class TextRepository(IShinrikaiDb db) : ITextRepository
     {
-        public async Task<IReadOnlyList<TText>> ListAsync(CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync("SELECT * FROM TEXTS", Map, ct);
-        }
+        public Task<IReadOnlyList<TText>> ListAsync(CancellationToken ct = default) => db.QueryAsync("SELECT * FROM TEXTS", Map, ct);
 
-        public async Task<TText?> GetAsync(int id, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync("SELECT * FROM TEXTS WHERE TXT_ID = @ID", Map, ct, ("@ID", id));
-        }
+        public Task<TText?> GetAsync(int id, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync("SELECT * FROM TEXTS WHERE TXT_ID = @ID", Map, ct, ("@ID", id));
 
-        public async Task<IReadOnlySet<int>> GetTextsWithExercisesAsync(CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            var ids = await conn.QueryAsync("SELECT DISTINCT EXR_TXT_ID FROM EXERCISES WHERE EXR_TXT_ID IS NOT NULL", r => r.GetInt("EXR_TXT_ID"), ct);
-            return ids.ToHashSet();
-        }
+        public async Task<IReadOnlySet<int>> GetTextsWithExercisesAsync(CancellationToken ct = default) =>
+            (await db.QueryAsync("SELECT DISTINCT EXR_TXT_ID FROM EXERCISES WHERE EXR_TXT_ID IS NOT NULL", r => r.GetInt("EXR_TXT_ID"), ct)).ToHashSet();
 
-        public async Task AddAsync(string title, string? level, string body, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task AddAsync(string title, string? level, string body, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 "INSERT INTO TEXTS (TXT_ID, TXT_TITLE, TXT_LEVEL, TXT_BODY) VALUES (GEN_ID(TEXTS_ID_GEN, 1), @TTL, @LVL, @BODY)",
                 ct, ("@TTL", title), ("@LVL", level), ("@BODY", body));
-        }
 
-        public async Task UpdateAsync(int id, string title, string? level, string body, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task UpdateAsync(int id, string title, string? level, string body, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 "UPDATE TEXTS SET TXT_TITLE = @TTL, TXT_LEVEL = @LVL, TXT_BODY = @BODY WHERE TXT_ID = @ID",
                 ct, ("@ID", id), ("@TTL", title), ("@LVL", level), ("@BODY", body));
-        }
 
         private static TText Map(DbDataReader r) => new()
         {
             Index = r.GetInt("TXT_ID"),
             Title = r.GetNullableString("TXT_TITLE") ?? string.Empty,
-            Level = Enum.TryParse<EJLPT>(r.GetNullableString("TXT_LEVEL") ?? "None", true, out var lvl) ? lvl : EJLPT.None,
+            Level = JlptLevel.Parse(r.GetNullableString("TXT_LEVEL")),
             Body = r.GetNullableString("TXT_BODY") ?? string.Empty,
         };
     }
@@ -92,15 +74,9 @@ namespace Nienow.Shinrikai.Text
     /// <summary>Port de TextManager.cs + TextController (leitura com stretchtext e cadastro).</summary>
     public sealed class TextService(ITextRepository repository, IKnowledgeStore knowledge, IMonitorStore monitors, TimeProvider? clock = null)
     {
-        private readonly TimeProvider _clock = clock ?? TimeProvider.System;
-
         /// <summary>TextManager.ListTexts + ordenação do TextController.Index.</summary>
-        public async Task<IReadOnlyList<TextListGroup>> ListAsync(EJLPT userLevel, CancellationToken ct = default)
-        {
-            var texts = await repository.ListAsync(ct);
-            var withExercises = await repository.GetTextsWithExercisesAsync(ct);
-            return BuildList(texts, withExercises, userLevel);
-        }
+        public async Task<IReadOnlyList<TextListGroup>> ListAsync(EJLPT userLevel, CancellationToken ct = default) =>
+            BuildList(await repository.ListAsync(ct), await repository.GetTextsWithExercisesAsync(ct), userLevel);
 
         public static IReadOnlyList<TextListGroup> BuildList(IEnumerable<TText> texts, IReadOnlySet<int> withExercises, EJLPT userLevel) =>
             texts
@@ -125,8 +101,7 @@ namespace Nienow.Shinrikai.Text
             if (text is null)
                 return null;
 
-            var wordIds = Stretchtext.ReferencedWordIds(text.Body);
-            var counters = await monitors.GetCountersAsync(MonitorTables.Transcription, userId, wordIds, ct);
+            var counters = await monitors.GetCountersAsync(MonitorTables.Transcription, userId, Stretchtext.ReferencedWordIds(text.Body), ct);
             text.Body = Stretchtext.ApplyKnowledge(text.Body,
                 wordId => Stretchtext.ShouldHideFurigana(counters.TryGetValue(wordId, out var c) ? c : null));
             return text;
@@ -142,16 +117,11 @@ namespace Nienow.Shinrikai.Text
         }
 
         public Task DeclareKnowledgeAsync(int userId, int textId, CancellationToken ct = default) =>
-            knowledge.DeclareAsync(KnowledgeTables.Text, userId, textId, _clock.GetLocalNow().DateTime, ct);
+            knowledge.DeclareAsync(KnowledgeTables.Text, userId, textId, (clock ?? TimeProvider.System).GetLocalNow().DateTime, ct);
 
         /// <summary>TextManager.RegisterLackOfKnowledge — o aluno clicou para ver a furigana.</summary>
-        public async Task RegisterLackOfKnowledgeAsync(int userId, int wordId, CancellationToken ct = default)
-        {
-            var monitor = await monitors.GetAsync(MonitorTables.Transcription, userId, wordId, ct)
-                          ?? new Monitor { UsrID = userId, VcbID = wordId };
-            FragmentVariation.RegisterLackOfKnowledge(monitor);
-            await monitors.SaveAsync(MonitorTables.Transcription, monitor, ct);
-        }
+        public Task RegisterLackOfKnowledgeAsync(int userId, int wordId, CancellationToken ct = default) =>
+            monitors.UpdateAsync(MonitorTables.Transcription, userId, wordId, m => FragmentVariation.RegisterLackOfKnowledge(m), ct);
 
         /// <summary>TextManager.RemoveInvalidElements.</summary>
         public static string RemoveInvalidElements(string text) =>
@@ -167,22 +137,11 @@ namespace Nienow.Shinrikai.Text
             if (string.IsNullOrWhiteSpace(form.Body))
                 return Response.Fail("O texto a ser cadastrado não possui um corpo.");
 
-            var level = string.IsNullOrWhiteSpace(form.Level) || form.Level.Equals("none", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : form.Level.Trim().ToUpperInvariant();
-            var body = RemoveInvalidElements(form.Body);
-
-            if (form.Id == 0)
-            {
-                await repository.AddAsync(form.Title.Trim(), level, body, ct);
-                return Response.Ok("Texto cadastrado com sucesso!");
-            }
-
-            if (await repository.GetAsync(form.Id, ct) is null)
-                return Response.Fail("Texto não encontrado.");
-
-            await repository.UpdateAsync(form.Id, form.Title.Trim(), level, body, ct);
-            return Response.Ok("Texto alterado com sucesso!");
+            var (title, level, body) = (form.Title.Trim(), JlptLevel.Normalize(form.Level), RemoveInvalidElements(form.Body));
+            return await Response.SaveAsync("Texto", form.Id,
+                () => repository.AddAsync(title, level, body, ct),
+                async () => await repository.GetAsync(form.Id, ct) is not null,
+                () => repository.UpdateAsync(form.Id, title, level, body, ct));
         }
     }
 }

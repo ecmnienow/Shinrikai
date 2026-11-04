@@ -5,19 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nienow.DataBaseConn;
 using Nienow.Helper;
+using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Core.Adaptive;
 using Nienow.Shinrikai.Vocabulary.Model;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Vocabulary
 {
-    /// <summary>Item da transcrição: o aluno vê a palavra em kanji e escreve em hiragana.</summary>
-    public record TranscriptionAnswer(int WordId, string Prompt, string? Answer);
-
-    public record TranscriptionSession(string Subject, bool Mistakes, IReadOnlyList<IReadOnlyList<VocabularyItem>> Pages)
-    {
-        public int TotalItems => Pages.Sum(p => p.Count);
-    }
+    public record TranscriptionSession(string Subject, bool Mistakes, IReadOnlyList<IReadOnlyList<VocabularyItem>> Pages);
 
     public interface ITranscriptionRepository
     {
@@ -26,21 +20,16 @@ namespace Nienow.Shinrikai.Vocabulary
         Task<IReadOnlyList<TWord>> GetMistakesAsync(int userId, int subjectId, CancellationToken ct = default);
         Task<IReadOnlyList<TWord>> GetWordsAsync(IReadOnlyList<int> ids, CancellationToken ct = default);
         Task<IReadOnlyList<TWord>> SearchKanjiWordAsync(string term, CancellationToken ct = default);
-        Task<Monitor?> GetMonitorAsync(int userId, int wordId, CancellationToken ct = default);
-        Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default);
     }
 
     /// <summary>Port de DBTranscription.cs (SQL parametrizado; monitor em TRL_MONITOR).</summary>
-    public sealed class TranscriptionRepository(IShinrikaiDb db, IMonitorStore monitors) : ITranscriptionRepository
+    public sealed class TranscriptionRepository(IShinrikaiDb db) : ITranscriptionRepository
     {
         private const string HasKanji = "(VCB_KANJI_1 IS NOT NULL OR VCB_KANJI_2 IS NOT NULL OR VCB_KANJI_3 IS NOT NULL)";
-        private const string SubjectFilter = "(VCB_SBJ_ID_1 = @SBJ OR VCB_SBJ_ID_2 = @SBJ OR VCB_SBJ_ID_3 = @SBJ)";
 
         /// <summary>Só assuntos que têm alguma palavra com kanji na possibilidade daquele assunto.</summary>
-        public async Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
+        public Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default) =>
+            db.QueryAsync(
                 """
                 SELECT SBJ_ID, SBJ_NAME
                 FROM SUBJECTS
@@ -52,44 +41,28 @@ namespace Nienow.Shinrikai.Vocabulary
                            (VCB_SBJ_ID_3 = SBJ_ID AND VCB_KANJI_3 IS NOT NULL))) > 0
                 ORDER BY SBJ_NAME
                 """,
-                r => new Subject(r.GetInt("SBJ_ID"), r.GetNullableString("SBJ_NAME") ?? ""), ct);
-        }
+                VocabularyRepository.MapSubject, ct);
 
-        public async Task<IReadOnlyList<TWord>> GetVocabularyBySubjectAsync(int subjectId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
-                $"{VocabularyRepository.SelectWord} WHERE {HasKanji} AND {SubjectFilter}",
+        public Task<IReadOnlyList<TWord>> GetVocabularyBySubjectAsync(int subjectId, CancellationToken ct = default) =>
+            db.QueryAsync($"{VocabularyRepository.SelectWord} WHERE {HasKanji} AND {VocabularyRepository.SubjectFilter}",
                 VocabularyRepository.Map, ct, ("@SBJ", subjectId));
-        }
 
-        public async Task<IReadOnlyList<TWord>> GetMistakesAsync(int userId, int subjectId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
+        public Task<IReadOnlyList<TWord>> GetMistakesAsync(int userId, int subjectId, CancellationToken ct = default) =>
+            db.QueryAsync(
                 $"""
                 {VocabularyRepository.SelectWord}
                   LEFT OUTER JOIN TRL_MONITOR ON TMN_VCB_ID = VCB_ID
                 WHERE {HasKanji}
-                  AND TMN_COUNTER > 0 AND TMN_USR_ID = @USR AND {SubjectFilter}
+                  AND TMN_COUNTER > 0 AND TMN_USR_ID = @USR AND {VocabularyRepository.SubjectFilter}
                 """,
                 VocabularyRepository.Map, ct, ("@USR", userId), ("@SBJ", subjectId));
-        }
 
-        public async Task<IReadOnlyList<TWord>> GetWordsAsync(IReadOnlyList<int> ids, CancellationToken ct = default)
-        {
-            if (ids.Count == 0)
-                return [];
-            var (inSql, parameters) = DbExtensions.InClause(ids.Distinct().ToList());
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"{VocabularyRepository.SelectWord} WHERE VCB_ID IN ({inSql})", VocabularyRepository.Map, ct, parameters);
-        }
+        public Task<IReadOnlyList<TWord>> GetWordsAsync(IReadOnlyList<int> ids, CancellationToken ct = default) =>
+            VocabularyRepository.GetWordsAsync(db, ids, ct);
 
         /// <summary>TranscriptionController.SearchKanjiWord — busca por kanji ou tradução (com kanji).</summary>
-        public async Task<IReadOnlyList<TWord>> SearchKanjiWordAsync(string term, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
+        public Task<IReadOnlyList<TWord>> SearchKanjiWordAsync(string term, CancellationToken ct = default) =>
+            db.QueryAsync(
                 $"""
                 {VocabularyRepository.SelectWord}
                 WHERE VCB_KANJI_1 LIKE @TERM OR
@@ -100,13 +73,6 @@ namespace Nienow.Shinrikai.Vocabulary
                   (VCB_TRANSLATION_3 LIKE @TERM AND VCB_KANJI_3 IS NOT NULL)
                 """,
                 VocabularyRepository.Map, ct, ("@TERM", "%" + term + "%"));
-        }
-
-        public Task<Monitor?> GetMonitorAsync(int userId, int wordId, CancellationToken ct = default) =>
-            monitors.GetAsync(MonitorTables.Transcription, userId, wordId, ct);
-
-        public Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default) =>
-            monitors.SaveAsync(MonitorTables.Transcription, monitor, ct);
     }
 
     /// <summary>
@@ -114,11 +80,11 @@ namespace Nienow.Shinrikai.Vocabulary
     /// mas o aluno vê a forma em kanji do assunto e escreve o kana; o contador usa a variante
     /// <see cref="FragmentVariation.ApplyTranscription"/>.
     /// </summary>
-    public sealed class TranscriptionService(ITranscriptionRepository repository, TimeProvider? clock = null)
+    public sealed class TranscriptionService(ITranscriptionRepository repository, IMonitorStore monitors, TimeProvider? clock = null)
     {
         public const int SearchLimit = 10;
 
-        private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+        private DateTime Now => (clock ?? TimeProvider.System).GetLocalNow().DateTime;
 
         public Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default) => repository.GetSubjectsAsync(ct);
 
@@ -146,24 +112,21 @@ namespace Nienow.Shinrikai.Vocabulary
             foreach (var word in words)
             {
                 var kanji = word.GetKanjiWords(subject);
-                if (kanji.Length == 0)
-                    continue;
-                items.Add(new VocabularyItem(word.ID, kanji[rng.Next(kanji.Length)]));
+                if (kanji.Length > 0)
+                    items.Add(new VocabularyItem(word.ID, kanji[rng.Next(kanji.Length)]));
             }
 
             items.ShuffleList(rng);
-            var pages = items.Chunk(VocabularyService.PageSize).Select(c => (IReadOnlyList<VocabularyItem>)c).ToList();
-            return new TranscriptionSession(subject, mistakes, pages);
+            return new TranscriptionSession(subject, mistakes, items.Paginate());
         }
 
         public static bool Check(TWord word, string? answer) =>
             !string.IsNullOrWhiteSpace(answer) && word.CheckTranscriptedWord(answer);
 
-        public async Task<IReadOnlyList<VocabularyResult>> CheckAnswersAsync(int userId, IReadOnlyList<TranscriptionAnswer> answers, CancellationToken ct = default)
+        public async Task<IReadOnlyList<VocabularyResult>> CheckAnswersAsync(int userId, IReadOnlyList<VocabularyAnswer> answers, CancellationToken ct = default)
         {
             var words = (await repository.GetWordsAsync(answers.Select(a => a.WordId).ToList(), ct)).ToDictionary(w => w.ID);
             var results = new List<VocabularyResult>(answers.Count);
-
             foreach (var a in answers)
             {
                 if (!words.TryGetValue(a.WordId, out var word))
@@ -173,21 +136,13 @@ namespace Nienow.Shinrikai.Vocabulary
                 }
 
                 var correct = Check(word, a.Answer);
-                var monitor = await repository.GetMonitorAsync(userId, word.ID, ct) ?? new Monitor { UsrID = userId, VcbID = word.ID };
-                FragmentVariation.ApplyTranscription(monitor, correct, _clock.GetLocalNow().DateTime);
-                await repository.SaveMonitorAsync(monitor, ct);
-
+                await monitors.UpdateAsync(MonitorTables.Transcription, userId, word.ID, m => FragmentVariation.ApplyTranscription(m, correct, Now), ct);
                 results.Add(new VocabularyResult(word.ID, a.Prompt, a.Answer, !correct, correct ? [] : [word.Kana ?? string.Empty]));
             }
-
             return results;
         }
 
-        public async Task<IReadOnlyList<TWord>> SearchKanjiWordAsync(string term, CancellationToken ct = default)
-        {
-            if (string.IsNullOrWhiteSpace(term))
-                return [];
-            return (await repository.SearchKanjiWordAsync(term.Trim(), ct)).Take(SearchLimit).ToList();
-        }
+        public async Task<IReadOnlyList<TWord>> SearchKanjiWordAsync(string term, CancellationToken ct = default) =>
+            string.IsNullOrWhiteSpace(term) ? [] : (await repository.SearchKanjiWordAsync(term.Trim(), ct)).Take(SearchLimit).ToList();
     }
 }

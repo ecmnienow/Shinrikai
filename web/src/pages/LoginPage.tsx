@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { api } from '../api/client'
+import { errorMessage, post } from '../api/client'
 import type { Jlpt, Response } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { LevelRadios } from '../components/common'
@@ -77,27 +77,13 @@ export function LoginPage() {
 
     setBusy(true)
     try {
-      const response = await api<Response>('/auth/signup', {
-        method: 'POST',
-        json: {
-          name: form.name,
-          email: form.email,
-          login: form.login,
-          password: form.password,
-          repeatPassword: form.repeatPassword,
-          sex: form.sex,
-          birthday: form.birthday || '0001-01-01',
-          profession: form.profession,
-          otherLanguages: form.otherLanguages,
-          jlpt: form.jlpt,
-        },
-      })
+      const response = await post<Response>('/auth/signup', { ...form, birthday: form.birthday || '0001-01-01' })
       await dialogs.info(response.message ?? 'Usuário cadastrado com sucesso!')
       setUsername(form.login)
       setForm(EMPTY)
       setMode('login')
     } catch (err) {
-      dialogs.alert(err instanceof Error ? err.message : 'Não foi possível cadastrar.')
+      dialogs.alert(errorMessage(err, 'Não foi possível cadastrar.'))
     } finally {
       setBusy(false)
     }

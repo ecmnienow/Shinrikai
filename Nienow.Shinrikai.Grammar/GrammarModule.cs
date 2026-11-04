@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nienow.DataBaseConn;
@@ -20,7 +21,7 @@ namespace Nienow.Shinrikai.Grammar
         public int[] Requisites { get; set; } = [];
 
         /// <summary>Valor cru de GRM_REQUISITES (para a regra de HasKnowledge do original).</summary>
-        [System.Text.Json.Serialization.JsonIgnore]
+        [JsonIgnore]
         public string? RawRequisites { get; set; }
     }
 
@@ -61,66 +62,40 @@ namespace Nienow.Shinrikai.Grammar
     {
         private const string OrderBy = "ORDER BY (CASE WHEN GRM_REQUISITES IS NULL THEN 0 ELSE 1 END), GRM_REQUISITES, 1";
 
-        public async Task<IReadOnlyList<TGrammar>> ListAsync(CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"SELECT * FROM GRAMMAR {OrderBy}", Map, ct);
-        }
+        public Task<IReadOnlyList<TGrammar>> ListAsync(CancellationToken ct = default) =>
+            db.QueryAsync($"SELECT * FROM GRAMMAR {OrderBy}", Map, ct);
 
-        public async Task<IReadOnlyList<GrammarSummary>> ListByLevelAsync(EJLPT? level, CancellationToken ct = default)
+        public Task<IReadOnlyList<GrammarSummary>> ListByLevelAsync(EJLPT? level, CancellationToken ct = default)
         {
-            string where = string.Empty;
-            var parameters = new List<(string, object?)>();
-            if (level.HasValue)
+            var (where, parameters) = level switch
             {
-                if (level.Value is EJLPT.None or EJLPT.N5)
-                {
-                    where = "WHERE GRM_LEVEL IS NULL OR UPPER(GRM_LEVEL) = 'N5'";
-                }
-                else
-                {
-                    where = "WHERE UPPER(GRM_LEVEL) = @LVL";
-                    parameters.Add(("@LVL", level.Value.ToString().ToUpperInvariant()));
-                }
-            }
-
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
+                null => ("", Array.Empty<(string, object?)>()),
+                EJLPT.None or EJLPT.N5 => ("WHERE GRM_LEVEL IS NULL OR UPPER(GRM_LEVEL) = 'N5'", []),
+                _ => ("WHERE UPPER(GRM_LEVEL) = @LVL", [("@LVL", level.Value.ToString().ToUpperInvariant())]),
+            };
+            return db.QueryAsync(
                 $"SELECT GRM_ID, GRM_TITLE FROM GRAMMAR {where} {OrderBy}",
-                r => new GrammarSummary(r.GetInt("GRM_ID"), r.GetNullableString("GRM_TITLE") ?? ""), ct, [.. parameters]);
+                r => new GrammarSummary(r.GetInt("GRM_ID"), r.GetNullableString("GRM_TITLE") ?? ""), ct, parameters);
         }
 
-        public async Task<TGrammar?> GetAsync(int id, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync("SELECT * FROM GRAMMAR WHERE GRM_ID = @ID", Map, ct, ("@ID", id));
-        }
+        public Task<TGrammar?> GetAsync(int id, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync("SELECT * FROM GRAMMAR WHERE GRM_ID = @ID", Map, ct, ("@ID", id));
 
-        public async Task<IReadOnlySet<int>> GetGrammarsWithExercisesAsync(CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            var ids = await conn.QueryAsync("SELECT DISTINCT EXR_GRM_ID FROM EXERCISES WHERE EXR_GRM_ID IS NOT NULL", r => r.GetInt("EXR_GRM_ID"), ct);
-            return ids.ToHashSet();
-        }
+        public async Task<IReadOnlySet<int>> GetGrammarsWithExercisesAsync(CancellationToken ct = default) =>
+            (await db.QueryAsync("SELECT DISTINCT EXR_GRM_ID FROM EXERCISES WHERE EXR_GRM_ID IS NOT NULL", r => r.GetInt("EXR_GRM_ID"), ct)).ToHashSet();
 
-        public async Task AddAsync(string title, string? level, string body, int[] requisites, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task AddAsync(string title, string? level, string body, int[] requisites, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 """
                 INSERT INTO GRAMMAR (GRM_ID, GRM_TITLE, GRM_LEVEL, GRM_BODY, GRM_REQUISITES)
                 VALUES (GEN_ID(GRAMMAR_ID_GEN, 1), @TTL, @LVL, @BODY, @REQ)
                 """,
                 ct, ("@TTL", title), ("@LVL", level), ("@BODY", body), ("@REQ", FormatRequisites(requisites)));
-        }
 
-        public async Task UpdateAsync(int id, string title, string? level, string body, int[] requisites, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task UpdateAsync(int id, string title, string? level, string body, int[] requisites, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 "UPDATE GRAMMAR SET GRM_TITLE = @TTL, GRM_LEVEL = @LVL, GRM_BODY = @BODY, GRM_REQUISITES = @REQ WHERE GRM_ID = @ID",
                 ct, ("@ID", id), ("@TTL", title), ("@LVL", level), ("@BODY", body), ("@REQ", FormatRequisites(requisites)));
-        }
 
         /// <summary>
         /// "001;002;010" (formato do AddGrammar original; o UpdateGrammar gravava sem zeros à esquerda —
@@ -137,7 +112,7 @@ namespace Nienow.Shinrikai.Grammar
                 Index = r.GetInt("GRM_ID"),
                 Title = r.GetNullableString("GRM_TITLE") ?? string.Empty,
                 // Como no original: nível nulo é tratado como N5.
-                Level = Enum.TryParse<EJLPT>(r.GetNullableString("GRM_LEVEL") ?? "N5", true, out var lvl) ? lvl : EJLPT.N5,
+                Level = JlptLevel.Parse(r.GetNullableString("GRM_LEVEL"), EJLPT.N5),
                 Body = r.GetNullableString("GRM_BODY") ?? string.Empty,
                 RawRequisites = raw,
                 Requisites = AdaptiveMap.ParseRequisites(raw).ToArray(),
@@ -148,26 +123,21 @@ namespace Nienow.Shinrikai.Grammar
     /// <summary>Port de GrammarManager.cs + GrammarController (mapa adaptativo).</summary>
     public sealed class GrammarService(IGrammarRepository repository, IKnowledgeStore knowledge, TimeProvider? clock = null)
     {
-        private readonly TimeProvider _clock = clock ?? TimeProvider.System;
-
         /// <summary>GrammarManager.ListGrammars + ordenação do GrammarController.Index.</summary>
-        public async Task<IReadOnlyList<GrammarMapGroup>> GetMapAsync(int userId, EJLPT userLevel, CancellationToken ct = default)
-        {
-            var grammars = await repository.ListAsync(ct);
-            var declared = await knowledge.GetDeclaredAsync(KnowledgeTables.Grammar, userId, ct);
-            var withExercises = await repository.GetGrammarsWithExercisesAsync(ct);
-            return BuildMap(grammars, declared, withExercises, userLevel);
-        }
+        public async Task<IReadOnlyList<GrammarMapGroup>> GetMapAsync(int userId, EJLPT userLevel, CancellationToken ct = default) =>
+            BuildMap(
+                await repository.ListAsync(ct),
+                await knowledge.GetDeclaredAsync(KnowledgeTables.Grammar, userId, ct),
+                await repository.GetGrammarsWithExercisesAsync(ct),
+                userLevel);
 
         public static IReadOnlyList<GrammarMapGroup> BuildMap(IEnumerable<TGrammar> grammars, IReadOnlySet<int> declared, IReadOnlySet<int> withExercises, EJLPT userLevel)
         {
             var items = grammars.Select(g =>
             {
-                var requisiteIds = AdaptiveMap.ParseRequisites(g.RawRequisites);
                 // COUNT(*) em GRA_MONITOR ... IN (requisitos): um registro por conteúdo declarado.
-                var declaredCount = requisiteIds.Distinct().Count(declared.Contains);
-                var hasKnowledge = AdaptiveMap.HasKnowledge(g.RawRequisites, declaredCount);
-                var unlocked = AdaptiveMap.IsUnlocked(userLevel, g.Level, hasKnowledge);
+                var declaredCount = AdaptiveMap.ParseRequisites(g.RawRequisites).Distinct().Count(declared.Contains);
+                var unlocked = AdaptiveMap.IsUnlocked(userLevel, g.Level, AdaptiveMap.HasKnowledge(g.RawRequisites, declaredCount));
                 return new GrammarMapItem(g.Index, g.Title, g.Level, unlocked, withExercises.Contains(g.Index));
             });
 
@@ -182,8 +152,11 @@ namespace Nienow.Shinrikai.Grammar
 
         public Task<TGrammar?> GetAsync(int id, CancellationToken ct = default) => repository.GetAsync(id, ct);
 
+        public Task<IReadOnlyList<GrammarSummary>> ListByLevelAsync(EJLPT? level, CancellationToken ct = default) =>
+            repository.ListByLevelAsync(level, ct);
+
         public Task DeclareKnowledgeAsync(int userId, int grammarId, CancellationToken ct = default) =>
-            knowledge.DeclareAsync(KnowledgeTables.Grammar, userId, grammarId, _clock.GetLocalNow().DateTime, ct);
+            knowledge.DeclareAsync(KnowledgeTables.Grammar, userId, grammarId, (clock ?? TimeProvider.System).GetLocalNow().DateTime, ct);
 
         /// <summary>GrammarController.GetRequisites.</summary>
         public async Task<GrammarRequisites?> GetRequisitesAsync(int id, EJLPT userLevel, CancellationToken ct = default)
@@ -203,9 +176,6 @@ namespace Nienow.Shinrikai.Grammar
             return new GrammarRequisites(false, "Conteúdo não disponível, para tal deve-se primeiramente estudar os seguintes conteúdos:", titles);
         }
 
-        public Task<IReadOnlyList<GrammarSummary>> ListByLevelAsync(EJLPT? level, CancellationToken ct = default) =>
-            repository.ListByLevelAsync(level, ct);
-
         /// <summary>GrammarController.AddGrammar (cadastro e alteração).</summary>
         public async Task<Response> SaveAsync(GrammarForm form, CancellationToken ct = default)
         {
@@ -214,26 +184,13 @@ namespace Nienow.Shinrikai.Grammar
             if (string.IsNullOrWhiteSpace(form.Body))
                 return Response.Fail("O conteúdo a ser cadastrado não possui um corpo.");
 
-            var level = NormalizeLevel(form.Level);
+            var (title, level, body) = (form.Title.Trim(), JlptLevel.Normalize(form.Level), form.Body);
             var requisites = (form.Requisites ?? []).Where(r => r > 0 && r != form.Id).Distinct().ToArray();
 
-            if (form.Id == 0)
-            {
-                await repository.AddAsync(form.Title.Trim(), level, form.Body, requisites, ct);
-                return Response.Ok("Conteúdo cadastrado com sucesso!");
-            }
-
-            if (await repository.GetAsync(form.Id, ct) is null)
-                return Response.Fail("Conteúdo não encontrado.");
-
-            await repository.UpdateAsync(form.Id, form.Title.Trim(), level, form.Body, requisites, ct);
-            return Response.Ok("Conteúdo alterado com sucesso!");
+            return await Response.SaveAsync("Conteúdo", form.Id,
+                () => repository.AddAsync(title, level, body, requisites, ct),
+                async () => await repository.GetAsync(form.Id, ct) is not null,
+                () => repository.UpdateAsync(form.Id, title, level, body, requisites, ct));
         }
-
-        /// <summary>"none"/vazio → NULL; "n5" → "N5".</summary>
-        public static string? NormalizeLevel(string? level) =>
-            string.IsNullOrWhiteSpace(level) || level.Equals("none", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : level.Trim().ToUpperInvariant();
     }
 }

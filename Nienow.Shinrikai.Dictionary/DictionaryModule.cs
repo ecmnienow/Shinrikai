@@ -24,14 +24,10 @@ namespace Nienow.Shinrikai.Dictionary
     /// <summary>Port de DictionaryManager.cs + DictionaryController.Search.</summary>
     public sealed class DictionaryService(IVocabularyRepository vocabulary)
     {
-        public async Task<SearchResult> SearchAsync(string? term, ESearchType type, CancellationToken ct = default)
-        {
-            if (string.IsNullOrWhiteSpace(term))
-                return new SearchResult(term ?? string.Empty, []);
-
-            var words = await vocabulary.GetAllAsync(ct);
-            return Search(words, term, type);
-        }
+        public async Task<SearchResult> SearchAsync(string? term, ESearchType type, CancellationToken ct = default) =>
+            string.IsNullOrWhiteSpace(term)
+                ? new SearchResult(term ?? string.Empty, [])
+                : Search(await vocabulary.GetAllAsync(ct), term, type);
 
         /// <summary>
         /// DictionaryManager.SearchRelatedWords + ordenação de DictionaryController.Search:
@@ -43,43 +39,27 @@ namespace Nienow.Shinrikai.Dictionary
         {
             var list = vocabulary.ToList();
             var found = new List<SearchWord>();
-            var japanese = type is ESearchType.Japanese or ESearchType.General;
-            var portuguese = type is ESearchType.Portuguese or ESearchType.General;
 
-            if (japanese)
+            void Add(Func<TWord, string?> foundTerm) =>
+                found.AddRange(list.Select(w => (Word: w, Found: foundTerm(w))).Where(x => x.Found != null).Select(x => new SearchWord(x.Found!, x.Word)));
+
+            if (type is ESearchType.Japanese or ESearchType.General)
             {
-                // Vocabulário simples (kanji word)
-                found.AddRange(list
-                    .Where(w => w.ContainsKanjiWord(term))
-                    .Select(w => new SearchWord(w.FirstKanjiWordContaining(term)!, w)));
-
-                // Vocabulário simples (kana)
-                found.AddRange(list
-                    .Where(w => w.Kana != null && w.Kana.Contains(term))
-                    .Select(w => new SearchWord(w.Kana!, w)));
-
-                // Vocabulário simples (romaji)
-                found.AddRange(list
-                    .Where(w => w.Romaji != null && w.Romaji.Contains(term))
-                    .Select(w => new SearchWord(w.Romaji!, w)));
+                Add(w => w.FirstKanjiWordContaining(term));
+                Add(w => w.Kana != null && w.Kana.Contains(term) ? w.Kana : null);
+                Add(w => w.Romaji != null && w.Romaji.Contains(term) ? w.Romaji : null);
             }
 
-            if (portuguese)
-            {
-                // Vocabulário simples (português)
-                found.AddRange(list
-                    .Select(w => (Word: w, Found: w.GetAllTranslatedWords(null).FirstOrDefault(p => p.Contains(term))))
-                    .Where(x => x.Found != null)
-                    .Select(x => new SearchWord(x.Found!, x.Word)));
-            }
+            if (type is ESearchType.Portuguese or ESearchType.General)
+                Add(w => w.GetAllTranslatedWords(null).FirstOrDefault(p => p.Contains(term)));
 
             var comparer = StringComparer.InvariantCulture;
-            var ordered = new List<SearchWord>();
-            ordered.AddRange(found.Where(r => r.FoundTerm == term));
-            ordered.AddRange(found.Where(r => r.FoundTerm.StartsWith(term, StringComparison.Ordinal) && r.FoundTerm != term).OrderBy(r => r.FoundTerm, comparer));
-            ordered.AddRange(found.Where(r => r.FoundTerm.IndexOf(term, StringComparison.Ordinal) > 0).OrderBy(r => r.FoundTerm, comparer));
-
-            return new SearchResult(term, ordered);
+            return new SearchResult(term,
+            [
+                .. found.Where(r => r.FoundTerm == term),
+                .. found.Where(r => r.FoundTerm.StartsWith(term, StringComparison.Ordinal) && r.FoundTerm != term).OrderBy(r => r.FoundTerm, comparer),
+                .. found.Where(r => r.FoundTerm.IndexOf(term, StringComparison.Ordinal) > 0).OrderBy(r => r.FoundTerm, comparer),
+            ]);
         }
     }
 }

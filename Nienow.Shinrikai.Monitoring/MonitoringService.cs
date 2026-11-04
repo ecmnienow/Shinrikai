@@ -21,8 +21,7 @@ namespace Nienow.Shinrikai.Monitoring
         {
             try
             {
-                await using var conn = await db.OpenAsync(ct);
-                await conn.ExecuteInTransactionAsync(
+                await db.ExecuteAsync(
                     """
                     INSERT INTO INTERACTIONS (
                       ITR_ID, ITR_USR_ID, ITR_SCR_NAME, ITR_SCR_ACTION, ITR_SCR_OPTION, ITR_DATETIME, ITR_SESSIONID
@@ -30,13 +29,7 @@ namespace Nienow.Shinrikai.Monitoring
                       GEN_ID(INTERACTIONS_ID_GEN, 1), @USR, @NAM, @ACT, @OPT, @DAT, @SES
                     )
                     """,
-                    ct,
-                    ("@USR", userId),
-                    ("@NAM", screen),
-                    ("@ACT", action),
-                    ("@OPT", option),
-                    ("@DAT", DateTime.Now),
-                    ("@SES", sessionId));
+                    ct, ("@USR", userId), ("@NAM", screen), ("@ACT", action), ("@OPT", option), ("@DAT", DateTime.Now), ("@SES", sessionId));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

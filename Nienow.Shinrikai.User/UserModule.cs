@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nienow.DataBaseConn;
 using Nienow.Shinrikai.Core;
+using Nienow.Shinrikai.Core.Adaptive;
 
 namespace Nienow.Shinrikai.User
 {
@@ -66,28 +67,17 @@ namespace Nienow.Shinrikai.User
             FROM USERS
             """;
 
-        public async Task<TUser?> GetByLoginAsync(string login, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync(SelectUser + " WHERE USR_LOGIN = @LGN", Map, ct, ("@LGN", login));
-        }
+        public Task<TUser?> GetByLoginAsync(string login, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync(SelectUser + " WHERE USR_LOGIN = @LGN", Map, ct, ("@LGN", login));
 
-        public async Task<TUser?> GetByEmailAsync(string email, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync(SelectUser + " WHERE USR_EMAIL = @EML", Map, ct, ("@EML", email));
-        }
+        public Task<TUser?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync(SelectUser + " WHERE USR_EMAIL = @EML", Map, ct, ("@EML", email));
 
-        public async Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.ScalarAsync("SELECT USR_PASS FROM USERS WHERE USR_LOGIN = @LGN", ct, ("@LGN", login)) as string;
-        }
+        public async Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default) =>
+            await db.ScalarAsync("SELECT USR_PASS FROM USERS WHERE USR_LOGIN = @LGN", ct, ("@LGN", login)) as string;
 
-        public async Task SignUpAsync(TUser user, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task SignUpAsync(TUser user, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 """
                 INSERT INTO USERS (
                   USRID, USR_NAME, USR_EMAIL, USR_LOGIN, USR_PASS,
@@ -107,33 +97,23 @@ namespace Nienow.Shinrikai.User
                 ("@JOB", user.Profession),
                 ("@LNG", user.OtherLanguages),
                 ("@JLPT", user.JLPT == EJLPT.None ? null : user.JLPT.ToString()));
-        }
 
-        public async Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default)
-        {
-            var sql = new StringBuilder(
-                """
+        public async Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default) =>
+            await db.ScalarAsync(
+                $"""
                 SELECT FIRST 1 NTF_MESSAGE FROM NOTIFICATIONS
                   LEFT OUTER JOIN NOT_STATUS ON NTF_ID = NST_NTF_ID AND NST_USR_ID = @USR
-                WHERE NTF_ID = @NTF
-                """);
-            if (!force)
-                sql.Append(" AND (NST_UNDERSTAND IS NULL OR NST_UNDERSTAND <> 'S')");
+                WHERE NTF_ID = @NTF{(force ? "" : " AND (NST_UNDERSTAND IS NULL OR NST_UNDERSTAND <> 'S')")}
+                """,
+                ct, ("@USR", userId), ("@NTF", notificationId)) as string ?? "";
 
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.ScalarAsync(sql.ToString(), ct, ("@USR", userId), ("@NTF", notificationId)) as string ?? "";
-        }
-
-        public async Task DeclareUnderstandingAsync(int userId, int notificationId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task DeclareUnderstandingAsync(int userId, int notificationId, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 """
                 INSERT INTO NOT_STATUS (NST_ID, NST_USR_ID, NST_NTF_ID, NST_UNDERSTAND, NST_DATE)
                 VALUES (GEN_ID(NOTSTATUS_ID_GEN, 1), @USR, @NTF, 'S', @DT)
                 """,
                 ct, ("@USR", userId), ("@NTF", notificationId), ("@DT", DateTime.Now));
-        }
 
         private static TUser Map(DbDataReader r) => new()
         {
@@ -145,7 +125,7 @@ namespace Nienow.Shinrikai.User
             Birthday = r.GetDateTimeOrDefault("USR_BIRTHDAY"),
             Profession = r.GetNullableString("USR_PROFISSION"),
             OtherLanguages = r.GetNullableString("USR_OTHERLANGUAGES"),
-            JLPT = Enum.TryParse<EJLPT>(r.GetNullableString("USR_JLPT") ?? "None", true, out var lvl) ? lvl : EJLPT.None,
+            JLPT = JlptLevel.Parse(r.GetNullableString("USR_JLPT")),
             Type = r.GetNullableString("USR_TYPE"),
         };
     }
@@ -171,10 +151,7 @@ namespace Nienow.Shinrikai.User
                 return null;
 
             var stored = await repository.GetStoredPasswordAsync(login, ct);
-            if (stored is null)
-                return null;
-
-            var ok = CryptographicOperations.FixedTimeEquals(
+            var ok = stored is not null && CryptographicOperations.FixedTimeEquals(
                 Encoding.UTF8.GetBytes(stored.TrimEnd()),
                 Encoding.UTF8.GetBytes(password));
 
@@ -183,12 +160,11 @@ namespace Nienow.Shinrikai.User
 
         public async Task<Response> CheckAvailabilityAsync(string login, string? email, CancellationToken ct = default)
         {
-            var freeLogin = await repository.GetByLoginAsync(login, ct) is null;
-            var freeEmail = string.IsNullOrEmpty(email) || await repository.GetByEmailAsync(email, ct) is null;
-
             var messages = new List<string>();
-            if (!freeLogin) messages.Add($"O login \"{login}\" já esta em uso.");
-            if (!freeEmail) messages.Add($"O email \"{email}\" já esta em uso.");
+            if (await repository.GetByLoginAsync(login, ct) is not null)
+                messages.Add($"O login \"{login}\" já esta em uso.");
+            if (!string.IsNullOrEmpty(email) && await repository.GetByEmailAsync(email, ct) is not null)
+                messages.Add($"O email \"{email}\" já esta em uso.");
 
             return messages.Count == 0 ? Response.Ok() : Response.Fail(string.Join(Environment.NewLine, messages));
         }
@@ -207,7 +183,7 @@ namespace Nienow.Shinrikai.User
             if (user.Password.Length < MinPasswordLength)
                 return Response.Fail($"A senha deve ter pelo menos {MinPasswordLength} dígitos.");
             // O original só checava se RepeatPassword era vazio; a mensagem indica a intenção de comparar.
-            if (string.IsNullOrEmpty(user.RepeatPassword) || user.RepeatPassword != user.Password)
+            if (user.RepeatPassword != user.Password)
                 return Response.Fail("A senha repetida não é a mesma de senha informada.");
 
             return Response.Ok();

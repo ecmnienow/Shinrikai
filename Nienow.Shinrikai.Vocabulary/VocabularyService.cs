@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nienow.DataBaseConn;
 using Nienow.Helper;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Core.Adaptive;
 using Nienow.Shinrikai.Vocabulary.Model;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Vocabulary
 {
@@ -17,24 +17,23 @@ namespace Nienow.Shinrikai.Vocabulary
     /// embaralhadas e o cliente navega entre elas; <see cref="CheckAnswersAsync"/> corrige por
     /// WordId e aplica a variação de fragmento (<see cref="FragmentVariation.ApplyVocabulary"/>).
     /// </summary>
-    public sealed class VocabularyService(IVocabularyRepository repository, TimeProvider? clock = null)
+    public sealed class VocabularyService(IVocabularyRepository repository, IMonitorStore monitors, TimeProvider? clock = null)
     {
-        public const int PageSize = 10;
+        private DateTime Now => (clock ?? TimeProvider.System).GetLocalNow().DateTime;
 
-        private readonly TimeProvider _clock = clock ?? TimeProvider.System;
-
-        public Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default) =>
-            repository.GetSubjectsAsync(ct);
+        public Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default) => repository.GetSubjectsAsync(ct);
 
         public Task<TWord?> GetWordAsync(int id, CancellationToken ct = default) => repository.GetWordAsync(id, ct);
 
         public Task<TWord?> GetWordByKanaAsync(string kana, CancellationToken ct = default) => repository.GetWordByKanaAsync(kana, ct);
 
+        public Task<byte[]?> GetMediaAsync(int wordId, VocabularyMedia media, int slot, CancellationToken ct = default) =>
+            repository.GetMediaAsync(wordId, media, slot, ct);
+
         /// <summary>GenerateVocabulary + NextPage do original.</summary>
         public async Task<VocabularySession?> GenerateAsync(int userId, int subjectId, bool toJapanese, bool mistakes, Random? rng = null, CancellationToken ct = default)
         {
-            var subjects = await repository.GetSubjectsAsync(ct);
-            var subject = subjects.FirstOrDefault(s => s.Id == subjectId);
+            var subject = (await repository.GetSubjectsAsync(ct)).FirstOrDefault(s => s.Id == subjectId);
             if (subject is null)
                 return null;
 
@@ -53,19 +52,11 @@ namespace Nienow.Shinrikai.Vocabulary
         {
             var list = words.ToList();
             list.ShuffleList(rng);
-
-            var pages = list
-                .Select(w => new VocabularyItem(w.ID, PromptFor(w, subject, toJapanese, rng)))
-                .Chunk(PageSize)
-                .Select(c => (IReadOnlyList<VocabularyItem>)c)
-                .ToList();
-
+            var pages = list.Select(w => new VocabularyItem(w.ID, PromptFor(w, subject, toJapanese, rng))).Paginate();
             return new VocabularySession(subject, toJapanese, mistakes, pages);
         }
 
-        /// <summary>
-        /// Japonês → português: mostra o kana. Português → japonês: sorteia uma das traduções do assunto.
-        /// </summary>
+        /// <summary>Japonês → português: mostra o kana. Português → japonês: sorteia uma das traduções do assunto.</summary>
         public static string PromptFor(TWord word, string subject, bool toJapanese, Random rng)
         {
             if (!toJapanese)
@@ -78,9 +69,7 @@ namespace Nienow.Shinrikai.Vocabulary
         /// <summary>CheckAnswers do original + ManageMistake por palavra.</summary>
         public async Task<IReadOnlyList<VocabularyResult>> CheckAnswersAsync(int userId, string subject, bool toJapanese, IReadOnlyList<VocabularyAnswer> answers, CancellationToken ct = default)
         {
-            var words = (await repository.GetWordsAsync(answers.Select(a => a.WordId).ToList(), ct))
-                .ToDictionary(w => w.ID);
-
+            var words = (await repository.GetWordsAsync(answers.Select(a => a.WordId).ToList(), ct)).ToDictionary(w => w.ID);
             var results = new List<VocabularyResult>(answers.Count);
             foreach (var a in answers)
             {
@@ -91,16 +80,10 @@ namespace Nienow.Shinrikai.Vocabulary
                 }
 
                 var correct = Check(word, subject, toJapanese, a.Answer);
-                var expected = toJapanese ? [word.Kana ?? string.Empty] : word.GetAllTranslatedWords(subject);
-
-                var monitor = await repository.GetMonitorAsync(userId, word.ID, ct)
-                              ?? new Monitor { UsrID = userId, VcbID = word.ID };
-                FragmentVariation.ApplyVocabulary(monitor, correct, _clock.GetLocalNow().DateTime);
-                await repository.SaveMonitorAsync(monitor, ct);
-
-                results.Add(new VocabularyResult(word.ID, a.Prompt, a.Answer, Wrong: !correct, Expected: correct ? [] : expected));
+                await monitors.UpdateAsync(MonitorTables.Vocabulary, userId, word.ID, m => FragmentVariation.ApplyVocabulary(m, correct, Now), ct);
+                var expected = correct ? [] : toJapanese ? [word.Kana ?? string.Empty] : word.GetAllTranslatedWords(subject);
+                results.Add(new VocabularyResult(word.ID, a.Prompt, a.Answer, !correct, expected));
             }
-
             return results;
         }
 
@@ -116,21 +99,23 @@ namespace Nienow.Shinrikai.Vocabulary
         {
             if (string.IsNullOrWhiteSpace(word.Kana)) return Response.Fail("Informe o kana.");
             if (string.IsNullOrWhiteSpace(word.Romaji)) return Response.Fail("Informe o romaji.");
-            if (word.SubjectID1 <= 0) return Response.Fail("Informe o assunto da possibilidade 1.");
-            if (string.IsNullOrWhiteSpace(word.Word1)) return Response.Fail("Informe a tradução da possibilidade 1.");
 
-            Response? Slot(int n, string? kanji, int subjectId, string? translation)
+            (int N, string? Kanji, int SubjectId, string? Translation)[] slots =
+            [
+                (1, word.KanjiWord1, word.SubjectID1, word.Word1),
+                (2, word.KanjiWord2, word.SubjectID2, word.Word2),
+                (3, word.KanjiWord3, word.SubjectID3, word.Word3),
+            ];
+            foreach (var (n, kanji, subjectId, translation) in slots)
             {
-                var any = !string.IsNullOrWhiteSpace(kanji) || subjectId > 0 || !string.IsNullOrWhiteSpace(translation);
-                if (!any) return null;
+                // A possibilidade 1 é sempre obrigatória.
+                if (n > 1 && string.IsNullOrWhiteSpace(kanji) && subjectId <= 0 && string.IsNullOrWhiteSpace(translation))
+                    continue;
                 if (subjectId <= 0) return Response.Fail($"Informe o assunto da possibilidade {n}.");
                 if (string.IsNullOrWhiteSpace(translation)) return Response.Fail($"Informe a tradução da possibilidade {n}.");
-                return null;
             }
 
-            return Slot(2, word.KanjiWord2, word.SubjectID2, word.Word2)
-                   ?? Slot(3, word.KanjiWord3, word.SubjectID3, word.Word3)
-                   ?? Response.Ok();
+            return Response.Ok();
         }
 
         public async Task<Response> SaveWordAsync(TWord word, CancellationToken ct = default)
@@ -139,15 +124,8 @@ namespace Nienow.Shinrikai.Vocabulary
             if (!validation.OK)
                 return validation;
 
-            if (word.ID == 0)
-                await repository.AddWordAsync(word, ct);
-            else
-                await repository.UpdateWordAsync(word, ct);
-
+            await (word.ID == 0 ? repository.AddWordAsync(word, ct) : repository.UpdateWordAsync(word, ct));
             return Response.Ok();
         }
-
-        public Task<byte[]?> GetMediaAsync(int wordId, VocabularyMedia media, int slot, CancellationToken ct = default) =>
-            repository.GetMediaAsync(wordId, media, slot, ct);
     }
 }

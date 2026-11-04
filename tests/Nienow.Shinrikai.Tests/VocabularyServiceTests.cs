@@ -3,12 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nienow.Helper;
+using Nienow.DataBaseConn;
 using Nienow.Shinrikai.User;
 using Nienow.Shinrikai.Vocabulary;
 using Nienow.Shinrikai.Vocabulary.Model;
 using Xunit;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Tests
 {
@@ -18,8 +17,9 @@ namespace Nienow.Shinrikai.Tests
         {
             public List<Subject> Subjects { get; } = [new(1, "Animais"), new(2, "Comida")];
             public List<TWord> Words { get; } = [];
-            public Dictionary<(int User, int Word), Monitor> Monitors { get; } = [];
-            public int NextMonitorId = 1;
+            public FakeMonitors Monitors { get; } = new();
+
+            public VocabularyService Service() => new(this, Monitors);
 
             public Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Subject>>(Subjects);
             public Task<IReadOnlyList<TWord>> GetVocabularyBySubjectAsync(int subjectId, CancellationToken ct = default) =>
@@ -27,7 +27,7 @@ namespace Nienow.Shinrikai.Tests
             public Task<IReadOnlyList<TWord>> GetMistakesAsync(int userId, int subjectId, CancellationToken ct = default) =>
                 Task.FromResult<IReadOnlyList<TWord>>(Words
                     .Where(w => w.SubjectID1 == subjectId || w.SubjectID2 == subjectId || w.SubjectID3 == subjectId)
-                    .Where(w => Monitors.TryGetValue((userId, w.ID), out var m) && m.Counter > 0).ToList());
+                    .Where(w => Monitors.Rows.TryGetValue((MonitorTables.Vocabulary.Table, userId, w.ID), out var m) && m.Counter > 0).ToList());
             public Task<IReadOnlyList<TWord>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<TWord>>(Words);
             public Task<IReadOnlyList<TWord>> GetWordsAsync(IReadOnlyList<int> ids, CancellationToken ct = default) =>
                 Task.FromResult<IReadOnlyList<TWord>>(Words.Where(w => ids.Contains(w.ID)).ToList());
@@ -36,19 +36,6 @@ namespace Nienow.Shinrikai.Tests
             public Task<byte[]?> GetMediaAsync(int wordId, VocabularyMedia media, int slot, CancellationToken ct = default) => Task.FromResult<byte[]?>(null);
             public Task AddWordAsync(TWord word, CancellationToken ct = default) { Words.Add(word); return Task.CompletedTask; }
             public Task UpdateWordAsync(TWord word, CancellationToken ct = default) => Task.CompletedTask;
-            public Task<Monitor?> GetMonitorAsync(int userId, int wordId, CancellationToken ct = default) =>
-                Task.FromResult(Monitors.TryGetValue((userId, wordId), out var m) ? Clone(m) : null);
-            public Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default)
-            {
-                if (monitor.IsNew) monitor.ID = NextMonitorId++;
-                Monitors[(monitor.UsrID, monitor.VcbID)] = Clone(monitor);
-                return Task.CompletedTask;
-            }
-            private static Monitor Clone(Monitor m) => new()
-            {
-                ID = m.ID, UsrID = m.UsrID, VcbID = m.VcbID, Counter = m.Counter,
-                FailCounter = m.FailCounter, SuccessCounter = m.SuccessCounter, LastHittedTime = m.LastHittedTime,
-            };
         }
 
         private static FakeRepository Seed(int count = 25)
@@ -66,7 +53,7 @@ namespace Nienow.Shinrikai.Tests
         [Fact]
         public async Task Generate_pages_by_ten_with_all_words_of_the_subject()
         {
-            var service = new VocabularyService(Seed());
+            var service = Seed().Service();
 
             var session = await service.GenerateAsync(1, subjectId: 1, toJapanese: false, mistakes: false, new Random(1));
 
@@ -80,7 +67,7 @@ namespace Nienow.Shinrikai.Tests
         [Fact]
         public async Task Generate_to_japanese_prompts_with_a_translation()
         {
-            var service = new VocabularyService(Seed(3));
+            var service = Seed(3).Service();
             var session = await service.GenerateAsync(1, 1, toJapanese: true, mistakes: false, new Random(1));
 
             Assert.All(session!.Pages.SelectMany(p => p),
@@ -90,7 +77,7 @@ namespace Nienow.Shinrikai.Tests
         [Fact]
         public async Task Unknown_subject_returns_null()
         {
-            var service = new VocabularyService(Seed());
+            var service = Seed().Service();
             Assert.Null(await service.GenerateAsync(1, 999, false, false));
         }
 
@@ -98,7 +85,7 @@ namespace Nienow.Shinrikai.Tests
         public async Task Check_marks_right_and_wrong_and_feeds_the_mistakes_mode()
         {
             var repo = Seed(3);
-            var service = new VocabularyService(repo);
+            var service = repo.Service();
 
             var results = await service.CheckAnswersAsync(userId: 7, "Animais", toJapanese: false,
             [
@@ -111,9 +98,9 @@ namespace Nienow.Shinrikai.Tests
             Assert.Equal(["bicho2", "animal2"], results[1].Expected);
             Assert.Empty(results[0].Expected);
 
-            Assert.Equal(10, repo.Monitors[(7, 2)].Counter);
-            Assert.Equal(0, repo.Monitors[(7, 1)].Counter);
-            Assert.Equal(1, repo.Monitors[(7, 1)].SuccessCounter);
+            Assert.Equal(10, repo.Monitors.Get(MonitorTables.Vocabulary, 7, 2).Counter);
+            Assert.Equal(0, repo.Monitors.Get(MonitorTables.Vocabulary, 7, 1).Counter);
+            Assert.Equal(1, repo.Monitors.Get(MonitorTables.Vocabulary, 7, 1).SuccessCounter);
 
             var mistakes = await service.GenerateAsync(7, 1, false, mistakes: true);
             Assert.Equal([2, 3], mistakes!.Pages.SelectMany(p => p).Select(i => i.WordId).Order());
@@ -122,7 +109,7 @@ namespace Nienow.Shinrikai.Tests
         [Fact]
         public async Task Check_to_japanese_compares_with_kana_exactly()
         {
-            var service = new VocabularyService(Seed(1));
+            var service = Seed(1).Service();
             var results = await service.CheckAnswersAsync(1, "Animais", toJapanese: true, [new(1, "bicho1", "かな1"), new(1, "bicho1", "かな1 ")]);
 
             Assert.False(results[0].Wrong);

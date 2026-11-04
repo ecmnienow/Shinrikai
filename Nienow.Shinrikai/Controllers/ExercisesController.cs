@@ -16,31 +16,26 @@ namespace Nienow.Shinrikai.Controllers
     public sealed record CheckExerciseRequest(int Answer);
 
     /// <summary>Port de ExercisesController (resolução + cadastro).</summary>
-    [ApiController]
     [Route("api/exercises")]
-    [Authorize]
     public sealed class ExercisesController(
         ExercisesService exercises,
         GrammarService grammar,
         TextService texts,
         UserService users,
-        IMonitoringService monitoring) : ControllerBase
+        IMonitoringService monitoring) : ShinrikaiController(monitoring, "Resolução de exercícios")
     {
-        private const string Screen = "Resolução de exercícios";
+        private const string BothContents = "Informe gramática ou texto, não os dois.";
 
         /// <summary>Index(grammarId, textId): IDs na ordem adaptativa (técnica 4.4).</summary>
         [HttpGet]
         public async Task<ActionResult<IReadOnlyList<int>>> List([FromQuery] int grammarId, [FromQuery] int textId, CancellationToken ct)
         {
             if (grammarId > 0 && textId > 0)
-                return BadRequest(Core.Response.Fail("Informe gramática ou texto, não os dois."));
+                return BadRequest(Core.Response.Fail(BothContents));
 
             // O original registrava "Texto " + grammarId (bug); aqui vai o ID do texto.
-            var option = grammarId > 0 ? "Gramática " + grammarId : textId > 0 ? "Texto " + textId : "Geral";
-            await Log("Pagina inicial", option, ct);
-
-            var level = (await users.GetUserAsync(User.Identity!.Name!, ct))?.JLPT ?? User.Jlpt();
-            return Ok(await exercises.ListAsync(level, grammarId, textId, ct: ct));
+            await Log("Pagina inicial", grammarId > 0 ? "Gramática " + grammarId : textId > 0 ? "Texto " + textId : "Geral", ct);
+            return Ok(await exercises.ListAsync(await CurrentLevelAsync(users, ct), grammarId, textId, ct: ct));
         }
 
         [HttpGet("{id:int}")]
@@ -55,7 +50,7 @@ namespace Nienow.Shinrikai.Controllers
         }
 
         [HttpPost("{id:int}/check")]
-        public async Task<ActionResult<Core.Response>> Check(int id, CheckExerciseRequest request, CancellationToken ct)
+        public async Task<ActionResult<Response>> Check(int id, CheckExerciseRequest request, CancellationToken ct)
         {
             var result = await exercises.CheckAnswerAsync(User.UserId(), id, request.Answer, ct);
             if (result is null)
@@ -76,25 +71,17 @@ namespace Nienow.Shinrikai.Controllers
                 return await exercises.GetAsync(id, ct) is { } existing ? existing : NotFound();
 
             if (grammarId > 0 && textId > 0)
-                return BadRequest(Core.Response.Fail("Informe gramática ou texto, não os dois."));
+                return BadRequest(Core.Response.Fail(BothContents));
 
-            var exercise = new TExercise { GrammarId = grammarId, TextId = textId };
-            if (grammarId > 0)
-                exercise.Level = (await grammar.GetAsync(grammarId, ct))?.Level ?? EJLPT.None;
-            if (textId > 0)
-                exercise.Level = (await texts.GetForEditingAsync(textId, ct))?.Level ?? EJLPT.None;
-            return exercise;
+            var level = grammarId > 0 ? (await grammar.GetAsync(grammarId, ct))?.Level
+                : textId > 0 ? (await texts.GetForEditingAsync(textId, ct))?.Level
+                : null;
+            return new TExercise { GrammarId = grammarId, TextId = textId, Level = level ?? EJLPT.None };
         }
 
         [HttpPost]
         [Authorize(Roles = Roles.ContentEditors)]
-        public async Task<ActionResult<Core.Response>> Save(TExercise exercise, CancellationToken ct)
-        {
-            var response = await exercises.SaveAsync(exercise, ct);
-            return response.OK ? response : BadRequest(response);
-        }
-
-        private Task Log(string action, string? option, CancellationToken ct) =>
-            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
+        public async Task<ActionResult<Response>> Save(TExercise exercise, CancellationToken ct) =>
+            Result(await exercises.SaveAsync(exercise, ct));
     }
 }

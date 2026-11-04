@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Nienow.Helper;
 using Nienow.Shinrikai.Auth;
 using Nienow.Shinrikai.Core;
+using Nienow.Shinrikai.Core.Adaptive;
 using Nienow.Shinrikai.Kanji;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
@@ -28,40 +28,22 @@ namespace Nienow.Shinrikai.Controllers
         public string? Info { get; set; }
         public IFormFile? Image { get; set; }
 
-        public TKanji ToKanji()
+        public TKanji ToKanji() => new()
         {
-            byte[]? image = null;
-            if (Image is { Length: > 0 })
-            {
-                using var stream = Image.OpenReadStream();
-                image = stream.ToByteArray();
-            }
-
-            return new TKanji
-            {
-                ID = ID,
-                KanjiLetter = KanjiLetter?.Trim(),
-                Kana = Kana,
-                Romaji = Romaji,
-                JLPT = JLPT,
-                Info = Info,
-                Image = image,
-            };
-        }
+            ID = ID, KanjiLetter = KanjiLetter?.Trim(), Kana = Kana, Romaji = Romaji, JLPT = JLPT, Info = Info,
+            Image = Image.ReadBytes(),
+        };
     }
 
     /// <summary>Port de KanjisController (leitura de kanjis + cadastro).</summary>
-    [ApiController]
     [Route("api/kanjis")]
-    [Authorize]
-    public sealed class KanjisController(KanjiService kanjis, IMonitoringService monitoring) : ControllerBase
+    public sealed class KanjisController(KanjiService kanjis, IMonitoringService monitoring)
+        : StudyController(monitoring, "Leitura de kanjis")
     {
-        private const string Screen = "Leitura de kanjis";
-
         [HttpPost("sessions")]
         public async Task<ActionResult<KanjiSession>> Generate(GenerateKanjiRequest request, CancellationToken ct)
         {
-            if (KanjiLevels.Normalize(request.Level) is not { } level || !KanjiLevels.All.Contains(level))
+            if (JlptLevel.Normalize(request.Level) is not { } level || !KanjiLevels.All.Contains(level))
                 return BadRequest(Core.Response.Fail("Nível inválido."));
 
             await Log("Gerar lista", level + (request.Mistakes ? " mistakes" : ""), ct);
@@ -71,19 +53,12 @@ namespace Nienow.Shinrikai.Controllers
         [HttpPost("check")]
         public async Task<ActionResult<IReadOnlyList<KanjiResult>>> Check(CheckKanjiRequest request, CancellationToken ct)
         {
-            if (request.Answers is not { Count: > 0 } || request.Answers.Count > KanjiService.PageSize)
-                return BadRequest(Core.Response.Fail($"Envie de 1 a {KanjiService.PageSize} respostas."));
+            if (!IsValidPage(request.Answers?.Count ?? 0))
+                return PageSizeError();
 
-            var results = await kanjis.CheckAnswersAsync(User.UserId(), request.Answers, ct);
+            var results = await kanjis.CheckAnswersAsync(User.UserId(), request.Answers!, ct);
             await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
             return Ok(results);
-        }
-
-        [HttpPost("interactions")]
-        public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
-        {
-            await Log(request.Action, request.Option, ct);
-            return NoContent();
         }
 
         [HttpGet("{id:int}/image")]
@@ -103,14 +78,8 @@ namespace Nienow.Shinrikai.Controllers
 
         [HttpPost]
         [Authorize(Roles = Roles.ContentEditors)]
-        [RequestSizeLimit(20 * 1024 * 1024)]
-        public async Task<ActionResult<Core.Response>> Save([FromForm] KanjiForm form, CancellationToken ct)
-        {
-            var response = await kanjis.SaveAsync(form.ToKanji(), ct);
-            return response.OK ? response : BadRequest(response);
-        }
-
-        private Task Log(string action, string? option, CancellationToken ct) =>
-            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
+        [RequestSizeLimit(MaxUploadBytes)]
+        public async Task<ActionResult<Response>> Save([FromForm] KanjiForm form, CancellationToken ct) =>
+            Result(await kanjis.SaveAsync(form.ToKanji(), ct));
     }
 }

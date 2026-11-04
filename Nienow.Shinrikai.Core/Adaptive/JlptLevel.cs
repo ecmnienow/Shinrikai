@@ -21,5 +21,18 @@ namespace Nienow.Shinrikai.Core.Adaptive
             var allowance = restrict ? 0 : 1;
             return (int)contentLevel <= (int)userLevel + allowance;
         }
+
+        /// <summary>
+        /// Valor gravado nas colunas de nível: "none"/vazio → null; demais → maiúsculas ("n5" → "N5").
+        /// O cadastro original de kanjis gravava "n5" e o estudo comparava com "N5".
+        /// </summary>
+        public static string? Normalize(string? level) =>
+            string.IsNullOrWhiteSpace(level) || level.Equals("none", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : level.Trim().ToUpperInvariant();
+
+        /// <summary>Lê a coluna de nível ("N5", "n4"…); nulo ou inválido vira <paramref name="fallback"/>.</summary>
+        public static EJLPT Parse(string? value, EJLPT fallback = EJLPT.None) =>
+            Enum.TryParse<EJLPT>(value, true, out var level) && Enum.IsDefined(level) ? level : fallback;
     }
 }

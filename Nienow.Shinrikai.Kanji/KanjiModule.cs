@@ -10,7 +10,6 @@ using Nienow.DataBaseConn;
 using Nienow.Helper;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Core.Adaptive;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Kanji
 {
@@ -58,10 +57,7 @@ namespace Nienow.Shinrikai.Kanji
     /// <summary>Kanji a ser lido: o aluno escreve até 3 leituras (GKanjiAnswer).</summary>
     public record KanjiItem(int KanjiId, string Kanji, int Inputs);
 
-    public record KanjiSession(string Level, bool Mistakes, IReadOnlyList<IReadOnlyList<KanjiItem>> Pages)
-    {
-        public int TotalItems => Pages.Sum(p => p.Count);
-    }
+    public record KanjiSession(string Level, bool Mistakes, IReadOnlyList<IReadOnlyList<KanjiItem>> Pages);
 
     public record KanjiAnswer(int KanjiId, string Kanji, IReadOnlyList<string?> Answers);
 
@@ -72,28 +68,16 @@ namespace Nienow.Shinrikai.Kanji
     {
         public static readonly string[] All = ["N5", "N4", "N3", "N2", "N1"];
 
-        /// <summary>"none"/vazio → null; demais → maiúsculas. O cadastro original gravava "n5" e o
-        /// estudo comparava com "N5", então kanjis cadastrados pela tela não apareciam no estudo.</summary>
-        public static string? Normalize(string? level)
-        {
-            if (string.IsNullOrWhiteSpace(level) || level.Equals("none", StringComparison.OrdinalIgnoreCase))
-                return null;
-            return level.Trim().ToUpperInvariant();
-        }
-
         /// <summary>
         /// KanjiManager.StartLoadingKanjis: níveis cumulativos (N4 = N5 + N4 …). N1 = todos os kanjis,
         /// inclusive sem nível (retorna null = sem filtro).
         /// </summary>
         public static IReadOnlyList<string>? Cumulative(string level)
         {
-            var normalized = Normalize(level);
-            var index = Array.IndexOf(All, normalized);
+            var index = Array.IndexOf(All, JlptLevel.Normalize(level));
             if (index < 0)
                 throw new ArgumentException($"Nível inválido: {level}", nameof(level));
-            if (normalized == "N1")
-                return null;
-            return All.Take(index + 1).ToArray();
+            return index == All.Length - 1 ? null : All[..(index + 1)];
         }
     }
 
@@ -106,12 +90,10 @@ namespace Nienow.Shinrikai.Kanji
         Task<byte[]?> GetImageAsync(int id, CancellationToken ct = default);
         Task AddAsync(TKanji kanji, CancellationToken ct = default);
         Task UpdateAsync(TKanji kanji, CancellationToken ct = default);
-        Task<Monitor?> GetMonitorAsync(int userId, int kanjiId, CancellationToken ct = default);
-        Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default);
     }
 
     /// <summary>Port de DBKanji.cs (SQL parametrizado).</summary>
-    public sealed class KanjiRepository(IShinrikaiDb db, IMonitorStore monitors) : IKanjiRepository
+    public sealed class KanjiRepository(IShinrikaiDb db) : IKanjiRepository
     {
         private const string Select =
             """
@@ -120,81 +102,59 @@ namespace Nienow.Shinrikai.Kanji
             FROM KANJI
             """;
 
-        public async Task<IReadOnlyList<TKanji>> GetKanjisAsync(IReadOnlyList<string>? levels, CancellationToken ct = default)
+        public Task<IReadOnlyList<TKanji>> GetKanjisAsync(IReadOnlyList<string>? levels, CancellationToken ct = default)
         {
             var (where, parameters) = LevelFilter(levels, "WHERE");
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"{Select} {where}", Map, ct, parameters);
+            return db.QueryAsync($"{Select} {where}", Map, ct, parameters);
         }
 
-        public async Task<IReadOnlyList<TKanji>> GetMistakesAsync(int userId, IReadOnlyList<string>? levels, CancellationToken ct = default)
+        public Task<IReadOnlyList<TKanji>> GetMistakesAsync(int userId, IReadOnlyList<string>? levels, CancellationToken ct = default)
         {
             var (where, parameters) = LevelFilter(levels, "AND");
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
+            return db.QueryAsync(
                 $"""
                 {Select}
                   LEFT OUTER JOIN KAN_MONITOR ON KMN_KNJ_ID = KNJ_ID
                 WHERE KMN_COUNTER > 0 AND KMN_USR_ID = @USR {where}
                 """,
-                Map, ct, [("@USR", (object?)userId), .. parameters]);
+                Map, ct, [("@USR", userId), .. parameters]);
         }
 
-        public async Task<IReadOnlyList<TKanji>> GetByIdsAsync(IReadOnlyList<int> ids, CancellationToken ct = default)
+        public Task<IReadOnlyList<TKanji>> GetByIdsAsync(IReadOnlyList<int> ids, CancellationToken ct = default)
         {
             if (ids.Count == 0)
-                return [];
-            var (inSql, parameters) = DbExtensions.InClause(ids.Distinct().ToList());
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"{Select} WHERE KNJ_ID IN ({inSql})", Map, ct, parameters);
+                return Task.FromResult<IReadOnlyList<TKanji>>([]);
+            var (inSql, parameters) = DbExtensions.InClause(ids);
+            return db.QueryAsync($"{Select} WHERE KNJ_ID IN ({inSql})", Map, ct, parameters);
         }
 
-        public async Task<TKanji?> GetByLetterAsync(string letter, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync($"{Select} WHERE KNJ_KANJI = @KNJ", Map, ct, ("@KNJ", letter));
-        }
+        public Task<TKanji?> GetByLetterAsync(string letter, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync($"{Select} WHERE KNJ_KANJI = @KNJ", Map, ct, ("@KNJ", letter));
 
-        public async Task<byte[]?> GetImageAsync(int id, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.ScalarAsync("SELECT KNJ_IMAGE FROM KANJI WHERE KNJ_ID = @ID", ct, ("@ID", id)) as byte[];
-        }
+        public async Task<byte[]?> GetImageAsync(int id, CancellationToken ct = default) =>
+            await db.ScalarAsync("SELECT KNJ_IMAGE FROM KANJI WHERE KNJ_ID = @ID", ct, ("@ID", id)) as byte[];
 
-        public async Task AddAsync(TKanji kanji, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+        public Task AddAsync(TKanji kanji, CancellationToken ct = default) =>
+            db.ExecuteAsync(
                 """
                 INSERT INTO KANJI (KNJ_ID, KNJ_KANJI, KNJ_KANA, KNJ_ROMAJI, KNJ_JLPT, KNJ_INFO, KNJ_IMAGE)
                 VALUES (GEN_ID(KANJI_ID_GEN, 1), @KNJ, @KAN, @RMJ, @LVL, @INF, @IMG)
                 """,
                 ct, [.. Parameters(kanji), ("@IMG", kanji.Image)]);
-        }
 
-        public async Task UpdateAsync(TKanji kanji, CancellationToken ct = default)
+        /// <summary>A imagem só é sobrescrita quando uma nova foi enviada.</summary>
+        public Task UpdateAsync(TKanji kanji, CancellationToken ct = default)
         {
             var hasImage = kanji.Image is { Length: > 0 };
-            var parameters = new List<(string, object?)>(Parameters(kanji)) { ("@ID", kanji.ID) };
-            if (hasImage)
-                parameters.Add(("@IMG", kanji.Image));
-
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
+            return db.ExecuteAsync(
                 $"""
                 UPDATE KANJI SET
                   KNJ_KANJI = @KNJ, KNJ_KANA = @KAN, KNJ_ROMAJI = @RMJ,
                   KNJ_JLPT = @LVL, KNJ_INFO = @INF{(hasImage ? ", KNJ_IMAGE = @IMG" : "")}
                 WHERE KNJ_ID = @ID
                 """,
-                ct, [.. parameters]);
+                ct, [.. Parameters(kanji), ("@ID", kanji.ID), .. hasImage ? [("@IMG", (object?)kanji.Image)] : Array.Empty<(string, object?)>()]);
         }
-
-        public Task<Monitor?> GetMonitorAsync(int userId, int kanjiId, CancellationToken ct = default) =>
-            monitors.GetAsync(MonitorTables.Kanji, userId, kanjiId, ct);
-
-        public Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default) =>
-            monitors.SaveAsync(MonitorTables.Kanji, monitor, ct);
 
         private static (string Sql, (string, object?)[] Parameters) LevelFilter(IReadOnlyList<string>? levels, string keyword)
         {
@@ -209,7 +169,7 @@ namespace Nienow.Shinrikai.Kanji
             ("@KNJ", kanji.KanjiLetter),
             ("@KAN", kanji.Kana),
             ("@RMJ", kanji.Romaji),
-            ("@LVL", KanjiLevels.Normalize(kanji.JLPT)),
+            ("@LVL", JlptLevel.Normalize(kanji.JLPT)),
             ("@INF", kanji.Info == "none" ? null : kanji.Info),
         ];
 
@@ -219,19 +179,18 @@ namespace Nienow.Shinrikai.Kanji
             KanjiLetter = r.GetNullableString("KNJ_KANJI"),
             Kana = r.GetNullableString("KNJ_KANA"),
             Romaji = r.GetNullableString("KNJ_ROMAJI"),
-            JLPT = KanjiLevels.Normalize(r.GetNullableString("KNJ_JLPT")),
+            JLPT = JlptLevel.Normalize(r.GetNullableString("KNJ_JLPT")),
             Info = r.GetNullableString("KNJ_INFO"),
-            HasImage = r.GetNullableString("HAS_IMAGE") == "T",
+            HasImage = r.GetFlag("HAS_IMAGE"),
         };
     }
 
     /// <summary>Port de KanjiManager.cs (leitura de kanjis + cadastro).</summary>
-    public sealed class KanjiService(IKanjiRepository repository, TimeProvider? clock = null)
+    public sealed class KanjiService(IKanjiRepository repository, IMonitorStore monitors, TimeProvider? clock = null)
     {
-        public const int PageSize = 10;
         public const int MaxInputs = 3;
 
-        private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+        private DateTime Now => (clock ?? TimeProvider.System).GetLocalNow().DateTime;
 
         public async Task<KanjiSession> GenerateAsync(int userId, string level, bool mistakes, Random? rng = null, CancellationToken ct = default)
         {
@@ -240,7 +199,7 @@ namespace Nienow.Shinrikai.Kanji
                 ? await repository.GetMistakesAsync(userId, levels, ct)
                 : await repository.GetKanjisAsync(levels, ct);
 
-            return BuildSession(KanjiLevels.Normalize(level)!, kanjis, mistakes, rng ?? Random.Shared);
+            return BuildSession(JlptLevel.Normalize(level)!, kanjis, mistakes, rng ?? Random.Shared);
         }
 
         public static KanjiSession BuildSession(string level, IEnumerable<TKanji> kanjis, bool mistakes, Random rng)
@@ -250,7 +209,7 @@ namespace Nienow.Shinrikai.Kanji
                 .Select(k => new KanjiItem(k.ID, k.KanjiLetter!, Math.Min(k.KanaReadingForms.Length, MaxInputs)))
                 .ToList();
             items.ShuffleList(rng);
-            return new KanjiSession(level, mistakes, items.Chunk(PageSize).Select(c => (IReadOnlyList<KanjiItem>)c).ToList());
+            return new KanjiSession(level, mistakes, items.Paginate());
         }
 
         /// <summary>KanjiManager.CheckAnswers: o kanji está certo só se todas as leituras pedidas estão certas.</summary>
@@ -267,7 +226,6 @@ namespace Nienow.Shinrikai.Kanji
         {
             var kanjis = (await repository.GetByIdsAsync(answers.Select(a => a.KanjiId).ToList(), ct)).ToDictionary(k => k.ID);
             var results = new List<KanjiResult>(answers.Count);
-
             foreach (var answer in answers)
             {
                 if (!kanjis.TryGetValue(answer.KanjiId, out var kanji))
@@ -277,12 +235,9 @@ namespace Nienow.Shinrikai.Kanji
                 }
 
                 var result = Check(kanji, answer);
-                var monitor = await repository.GetMonitorAsync(userId, kanji.ID, ct) ?? new Monitor { UsrID = userId, VcbID = kanji.ID };
-                FragmentVariation.ApplyKanji(monitor, !result.Wrong, _clock.GetLocalNow().DateTime);
-                await repository.SaveMonitorAsync(monitor, ct);
+                await monitors.UpdateAsync(MonitorTables.Kanji, userId, kanji.ID, m => FragmentVariation.ApplyKanji(m, !result.Wrong, Now), ct);
                 results.Add(result);
             }
-
             return results;
         }
 
@@ -307,18 +262,13 @@ namespace Nienow.Shinrikai.Kanji
                 return Response.Fail("Informe as informações do kanji.");
 
             var existing = await repository.GetByLetterAsync(kanji.KanjiLetter!, ct);
-            if (kanji.ID == 0)
-            {
-                if (existing is not null)
-                    return Response.Fail("Este kanji já está cadastrado.");
-                await repository.AddAsync(kanji, ct);
-                return Response.Ok("Kanji cadastrado com sucesso!");
-            }
+            if (kanji.ID == 0 && existing is not null)
+                return Response.Fail("Este kanji já está cadastrado.");
 
-            if (existing is null || existing.ID != kanji.ID)
-                return Response.Fail("Kanji não encontrado.");
-            await repository.UpdateAsync(kanji, ct);
-            return Response.Ok("Kanji alterado com sucesso!");
+            return await Response.SaveAsync("Kanji", kanji.ID,
+                () => repository.AddAsync(kanji, ct),
+                () => Task.FromResult(existing?.ID == kanji.ID),
+                () => repository.UpdateAsync(kanji, ct));
         }
     }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, ApiError } from '../../api/client'
+import { api, errorMessage, isNotFound, post } from '../../api/client'
 import type { Jlpt, Kanji, Response } from '../../api/types'
 import { FileField, LevelRadios, PageTitle } from '../../components/common'
 import { useDialogs } from '../../components/Dialogs'
@@ -47,8 +47,8 @@ export function KanjiRegisterPage() {
       setHasImage(k.hasImage)
       setInvalid(new Set())
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) dialogs.alert('Kanji não encontrado!')
-      else dialogs.error(e instanceof Error ? e.message : 'Falha na busca.')
+      if (isNotFound(e)) dialogs.alert('Kanji não encontrado!')
+      else dialogs.error(errorMessage(e, 'Falha na busca.'))
     }
   }
 
@@ -72,11 +72,11 @@ export function KanjiRegisterPage() {
 
     setBusy(true)
     try {
-      const response = await api<Response>('/kanjis', { method: 'POST', body: form })
+      const response = await post<Response>('/kanjis', form)
       await dialogs.info(response.message ?? 'Kanji cadastrado com sucesso!')
       reset()
     } catch (e) {
-      dialogs.error(e instanceof Error ? e.message : kanjiId === 0 ? 'Não foi possível cadastrar o novo kanji!' : 'Não foi possível alterar o kanji!')
+      dialogs.error(errorMessage(e, kanjiId === 0 ? 'Não foi possível cadastrar o novo kanji!' : 'Não foi possível alterar o kanji!'))
     } finally {
       setBusy(false)
     }

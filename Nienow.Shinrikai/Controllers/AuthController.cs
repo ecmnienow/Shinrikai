@@ -12,9 +12,9 @@ namespace Nienow.Shinrikai.Controllers
     public sealed record LoginRequest(string Username, string Password);
 
     /// <summary>Port de LoginController (Forms Auth + Session → JWT).</summary>
-    [ApiController]
     [Route("api/auth")]
-    public sealed class AuthController(UserService users, JwtTokenService tokens, IMonitoringService monitoring) : ControllerBase
+    public sealed class AuthController(UserService users, JwtTokenService tokens, IMonitoringService monitoring)
+        : ShinrikaiController(monitoring, "Logout")
     {
         [HttpPost("login")]
         [AllowAnonymous]
@@ -22,11 +22,10 @@ namespace Nienow.Shinrikai.Controllers
         {
             var user = await users.LoginAsync(request.Username, request.Password, ct);
             if (user is null)
-                return Unauthorized(new Response { OK = false, Message = "Usuário ou senha inválidos." });
+                return Unauthorized(Core.Response.Fail("Usuário ou senha inválidos."));
 
-            var auth = tokens.Issue(user);
-            await monitoring.AddAsync(user.ID, "Login", "Autenticacao", "Autenticado", null, ct);
-            return auth;
+            await Monitoring.AddAsync(user.ID, "Login", "Autenticacao", "Autenticado", null, ct);
+            return tokens.Issue(user);
         }
 
         [HttpPost("signup")]
@@ -35,33 +34,20 @@ namespace Nienow.Shinrikai.Controllers
         {
             user.Type = null; // nunca aceitar o papel vindo do cliente
             var response = await users.SignUpAsync(user, ct);
-            if (!response.OK)
-                return BadRequest(response);
-
-            var created = await users.GetUserAsync(user.Login!, ct);
-            if (created is not null)
-                await monitoring.AddAsync(created.ID, "SignUp", "Cadastro de usuario", user.Name, null, ct);
-
-            return response;
+            if (response.OK && await users.GetUserAsync(user.Login!, ct) is { } created)
+                await Monitoring.AddAsync(created.ID, "SignUp", "Cadastro de usuario", user.Name, null, ct);
+            return Result(response);
         }
 
         [HttpGet("me")]
-        [Authorize]
-        public async Task<ActionResult<UserInfo>> Me(CancellationToken ct)
-        {
-            var user = await users.GetUserAsync(User.Identity!.Name!, ct);
-            if (user is null)
-                return Unauthorized();
+        public async Task<ActionResult<UserInfo>> Me(CancellationToken ct) =>
+            await users.GetUserAsync(User.Identity!.Name!, ct) is { } user ? UserInfo.From(user) : Unauthorized();
 
-            return new UserInfo(user.ID, user.Login, user.Name, user.JLPT, user.Role);
-        }
-
+        /// <summary>JWT é stateless: o cliente descarta o token. Mantém o registro de interação do original.</summary>
         [HttpPost("logout")]
-        [Authorize]
         public async Task<IActionResult> Logout(CancellationToken ct)
         {
-            // JWT é stateless: o cliente descarta o token. Mantém o registro de interação do original.
-            await monitoring.AddAsync(User.UserId(), "Logout", "Logout", null, User.SessionId(), ct);
+            await Log("Logout", null, ct);
             return NoContent();
         }
     }

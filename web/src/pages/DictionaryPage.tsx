@@ -1,9 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, errorMessage, fetchBlobUrl, fire } from '../api/client'
 import type { SearchResult, SearchType, Word } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
-import { fetchBlobUrl, PageTitle, playAudio } from '../components/common'
+import { EditLink, PageTitle, playAudio } from '../components/common'
 import { useDialogs } from '../components/Dialogs'
 
 const TYPES: { value: SearchType; label: string }[] = [
@@ -35,8 +33,6 @@ function Highlight({ text, term }: { text: string; term: string }) {
 /** Port de Views/Dictionary/Index.cshtml + Search.cshtml. */
 export function DictionaryPage() {
   const dialogs = useDialogs()
-  const { user } = useAuth()
-  const isEditor = user?.role === 'Administrator' || user?.role === 'Teacher'
   const [term, setTerm] = useState('')
   const [type, setType] = useState<SearchType>('General')
   const [result, setResult] = useState<SearchResult | null>(null)
@@ -44,7 +40,7 @@ export function DictionaryPage() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api('/dictionary/interactions', { method: 'POST' }).catch(() => {})
+    fire('/dictionary/interactions')
   }, [])
 
   async function search(e?: FormEvent) {
@@ -58,7 +54,7 @@ export function DictionaryPage() {
     try {
       setResult(await api<SearchResult>(`/dictionary/search?term=${encodeURIComponent(term)}&type=${type}`))
     } catch (err) {
-      dialogs.error(err instanceof Error ? err.message : 'Falha na busca.')
+      dialogs.error(errorMessage(err, 'Falha na busca.'))
     } finally {
       setBusy(false)
     }
@@ -123,7 +119,7 @@ export function DictionaryPage() {
                       <div className="found" lang="ja"><Highlight text={r.foundTerm} term={result.term} /></div>
                       <div>
                         <span className="actions">
-                          {isEditor && <Link to={`/professor/vocabulario?id=${r.word.id}`} title="Editar" aria-label="Editar palavra">✎</Link>}
+                          <EditLink className="" to={`/professor/vocabulario?id=${r.word.id}`} label="Editar palavra" />
                           {slots(r.word, 'image').length > 0 && (
                             <button type="button" className="icon" title="Ver imagem" aria-label="Ver imagem" onClick={() => showImages(r.word)}>🖼</button>
                           )}

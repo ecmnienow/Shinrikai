@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '../../api/client'
+import { api, errorMessage, post } from '../../api/client'
 import type { Exercise, Jlpt, Response } from '../../api/types'
 import { LevelRadios, PageTitle } from '../../components/common'
 import { useDialogs } from '../../components/Dialogs'
@@ -46,11 +46,11 @@ export function ExerciseRegisterPage() {
     }
     setBusy(true)
     try {
-      const response = await api<Response>('/exercises', { method: 'POST', json: exercise })
+      const response = await post<Response>('/exercises', exercise)
       await dialogs.info(response.message ?? 'Exercício cadastrado com sucesso!')
       navigate(-1)
     } catch (e) {
-      dialogs.alert(e instanceof Error ? e.message : 'Não foi possível cadastrar o novo exercício!')
+      dialogs.alert(errorMessage(e, 'Não foi possível cadastrar o novo exercício!'))
     } finally {
       setBusy(false)
     }

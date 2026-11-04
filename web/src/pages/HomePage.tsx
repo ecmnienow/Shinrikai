@@ -1,11 +1,23 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { STUDENT_MENU, TEACHER_MENU } from '../menu'
+import { STUDENT_MENU, TEACHER_MENU, type MenuItem } from '../menu'
+
+function Tiles({ title, items }: { title: string; items: MenuItem[] }) {
+  return (
+    <>
+      <h2>{title}</h2>
+      <div className="tiles">
+        {items.map((m) => (
+          <Link key={m.to} to={m.to} className="tile">{m.label}</Link>
+        ))}
+      </div>
+    </>
+  )
+}
 
 /** Views/Home/Index.cshtml — página inicial com os mesmos atalhos do menu. */
 export function HomePage() {
-  const { user } = useAuth()
-  const isEditor = user?.role === 'Administrator' || user?.role === 'Teacher'
+  const { user, isEditor } = useAuth()
 
   return (
     <main>
@@ -17,31 +29,15 @@ export function HomePage() {
         </div>
       </div>
 
-      {!user && (
+      {user ? (
+        <>
+          <Tiles title="Aluno" items={STUDENT_MENU.flat()} />
+          {isEditor && <Tiles title="Professor" items={TEACHER_MENU} />}
+        </>
+      ) : (
         <p className="notice">
           <Link to="/login">Entre</Link> ou cadastre-se para começar a estudar.
         </p>
-      )}
-
-      {user && (
-        <>
-          <h2>Aluno</h2>
-          <div className="tiles">
-            {STUDENT_MENU.flat().map((m) => (
-              <Link key={m.to} to={m.to} className="tile">{m.label}</Link>
-            ))}
-          </div>
-          {isEditor && (
-            <>
-              <h2>Professor</h2>
-              <div className="tiles">
-                {TEACHER_MENU.map((m) => (
-                  <Link key={m.to} to={m.to} className="tile">{m.label}</Link>
-                ))}
-              </div>
-            </>
-          )}
-        </>
       )}
     </main>
   )

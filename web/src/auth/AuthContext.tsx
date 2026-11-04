@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, getToken, setToken, setUnauthorizedHandler } from '../api/client'
+import { api, getToken, post, setToken, setUnauthorizedHandler } from '../api/client'
 import type { AuthenticatedUser, UserInfo } from '../api/types'
 
 interface AuthState {
   user: UserInfo | null
+  /** Administrator ou Teacher ([Authorize(Roles = "Administrator, Teacher")] do original). */
+  isEditor: boolean
   loading: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
@@ -25,24 +27,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (username: string, password: string) => {
-    const auth = await api<AuthenticatedUser>('/auth/login', { method: 'POST', json: { username, password } })
+    const auth = await post<AuthenticatedUser>('/auth/login', { username, password })
     setToken(auth.token)
     setUser(auth.user)
   }, [])
 
   const logout = useCallback(async () => {
-    try {
-      // Só registra a interação; se falhar (token expirado, rede), sai do mesmo jeito.
-      await api('/auth/logout', { method: 'POST' })
-    } catch {
-      /* ignorado */
-    } finally {
-      setToken(null)
-      setUser(null)
-    }
+    // Só registra a interação; se falhar (token expirado, rede), sai do mesmo jeito.
+    await post('/auth/logout').catch(() => {})
+    setToken(null)
+    setUser(null)
   }, [])
 
-  const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout])
+  const value = useMemo(
+    () => ({ user, isEditor: user?.role === 'Administrator' || user?.role === 'Teacher', loading, login, logout }),
+    [user, loading, login, logout],
+  )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

@@ -2,13 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nienow.DataBaseConn;
-using Nienow.Helper;
 using Nienow.Shinrikai.Vocabulary.Model;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Vocabulary
 {
@@ -23,15 +20,13 @@ namespace Nienow.Shinrikai.Vocabulary
         Task<byte[]?> GetMediaAsync(int wordId, VocabularyMedia media, int slot, CancellationToken ct = default);
         Task AddWordAsync(TWord word, CancellationToken ct = default);
         Task UpdateWordAsync(TWord word, CancellationToken ct = default);
-        Task<Monitor?> GetMonitorAsync(int userId, int wordId, CancellationToken ct = default);
-        Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default);
         Task<IReadOnlyList<TWord>> GetAllAsync(CancellationToken ct = default);
     }
 
     public enum VocabularyMedia { Image, Audio }
 
     /// <summary>Port de DBVocabulary.cs — todas as consultas parametrizadas.</summary>
-    public sealed class VocabularyRepository(IShinrikaiDb db, IMonitorStore monitors) : IVocabularyRepository
+    public sealed class VocabularyRepository(IShinrikaiDb db) : IVocabularyRepository
     {
         internal const string SelectWord =
             """
@@ -50,60 +45,36 @@ namespace Nienow.Shinrikai.Vocabulary
             FROM VOCABULARY
             """;
 
-        private const string SubjectFilter = "(VCB_SBJ_ID_1 = @SBJ OR VCB_SBJ_ID_2 = @SBJ OR VCB_SBJ_ID_3 = @SBJ)";
+        internal const string SubjectFilter = "(VCB_SBJ_ID_1 = @SBJ OR VCB_SBJ_ID_2 = @SBJ OR VCB_SBJ_ID_3 = @SBJ)";
 
-        public async Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
-                "SELECT SBJ_ID, SBJ_NAME FROM SUBJECTS ORDER BY SBJ_NAME",
-                r => new Subject(r.GetInt("SBJ_ID"), r.GetNullableString("SBJ_NAME") ?? ""), ct);
-        }
+        public Task<IReadOnlyList<Subject>> GetSubjectsAsync(CancellationToken ct = default) =>
+            db.QueryAsync("SELECT SBJ_ID, SBJ_NAME FROM SUBJECTS ORDER BY SBJ_NAME", MapSubject, ct);
 
         /// <summary>
         /// Modo normal. O original carregava o vocabulário inteiro e filtrava pelo nome do assunto
         /// em memória; aqui o filtro vai para o SQL (mesmo resultado).
         /// </summary>
-        public async Task<IReadOnlyList<TWord>> GetVocabularyBySubjectAsync(int subjectId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"{SelectWord} WHERE {SubjectFilter}", Map, ct, ("@SBJ", subjectId));
-        }
+        public Task<IReadOnlyList<TWord>> GetVocabularyBySubjectAsync(int subjectId, CancellationToken ct = default) =>
+            db.QueryAsync($"{SelectWord} WHERE {SubjectFilter}", Map, ct, ("@SBJ", subjectId));
 
         /// <summary>Modo "Refazer erradas": palavras com VMN_COUNTER &gt; 0 para o aluno.</summary>
-        public async Task<IReadOnlyList<TWord>> GetMistakesAsync(int userId, int subjectId, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(
+        public Task<IReadOnlyList<TWord>> GetMistakesAsync(int userId, int subjectId, CancellationToken ct = default) =>
+            db.QueryAsync(
                 $"""
                 {SelectWord}
                   LEFT OUTER JOIN VOC_MONITOR ON VMN_VCB_ID = VCB_ID
                 WHERE VMN_COUNTER > 0 AND VMN_USR_ID = @USR AND {SubjectFilter}
                 """,
                 Map, ct, ("@USR", userId), ("@SBJ", subjectId));
-        }
 
-        public async Task<IReadOnlyList<TWord>> GetWordsAsync(IReadOnlyList<int> ids, CancellationToken ct = default)
-        {
-            if (ids.Count == 0)
-                return [];
+        public Task<IReadOnlyList<TWord>> GetWordsAsync(IReadOnlyList<int> ids, CancellationToken ct = default) =>
+            GetWordsAsync(db, ids, ct);
 
-            var (inSql, parameters) = DbExtensions.InClause(ids.Distinct().ToList());
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync($"{SelectWord} WHERE VCB_ID IN ({inSql})", Map, ct, parameters);
-        }
+        public Task<TWord?> GetWordAsync(int id, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync($"{SelectWord} WHERE VCB_ID = @ID", Map, ct, ("@ID", id));
 
-        public async Task<TWord?> GetWordAsync(int id, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync($"{SelectWord} WHERE VCB_ID = @ID", Map, ct, ("@ID", id));
-        }
-
-        public async Task<TWord?> GetWordByKanaAsync(string kana, CancellationToken ct = default)
-        {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QuerySingleOrDefaultAsync($"{SelectWord} WHERE VCB_KANA = @KAN", Map, ct, ("@KAN", kana));
-        }
+        public Task<TWord?> GetWordByKanaAsync(string kana, CancellationToken ct = default) =>
+            db.QuerySingleOrDefaultAsync($"{SelectWord} WHERE VCB_KANA = @KAN", Map, ct, ("@KAN", kana));
 
         public async Task<byte[]?> GetMediaAsync(int wordId, VocabularyMedia media, int slot, CancellationToken ct = default)
         {
@@ -112,76 +83,59 @@ namespace Nienow.Shinrikai.Vocabulary
 
             // Nome de coluna vem de um conjunto fechado (enum + 1..3), nunca de entrada livre.
             var column = (media == VocabularyMedia.Image ? "VCB_IMAGE_" : "VCB_AUDIO_") + slot;
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.ScalarAsync($"SELECT {column} FROM VOCABULARY WHERE VCB_ID = @ID", ct, ("@ID", wordId)) as byte[];
+            return await db.ScalarAsync($"SELECT {column} FROM VOCABULARY WHERE VCB_ID = @ID", ct, ("@ID", wordId)) as byte[];
         }
 
-        public async Task AddWordAsync(TWord word, CancellationToken ct = default)
+        public Task AddWordAsync(TWord word, CancellationToken ct = default)
         {
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(
-                """
+            var blobs = Blobs(word);
+            return db.ExecuteAsync(
+                $"""
                 INSERT INTO VOCABULARY (
                   VCB_ID, VCB_KANA, VCB_ROMAJI, VCB_KANJI_1, VCB_KANJI_2, VCB_KANJI_3,
                   VCB_SBJ_ID_1, VCB_SBJ_ID_2, VCB_SBJ_ID_3, VCB_TRANSLATION_1,
-                  VCB_TRANSLATION_2, VCB_TRANSLATION_3, VCB_IMAGE_1, VCB_IMAGE_2, VCB_IMAGE_3,
-                  VCB_AUDIO_1, VCB_AUDIO_2, VCB_AUDIO_3
+                  VCB_TRANSLATION_2, VCB_TRANSLATION_3, {string.Join(", ", blobs.Select(b => b.Column))}
                 ) VALUES (
                   GEN_ID(VOCABULARY_ID_GEN, 1), @KAN, @RMJ, @KNJ1, @KNJ2, @KNJ3,
-                  @SBJ1, @SBJ2, @SBJ3, @WRD1, @WRD2,
-                  @WRD3, @IMG1, @IMG2, @IMG3,
-                  @AUD1, @AUD2, @AUD3
+                  @SBJ1, @SBJ2, @SBJ3, @WRD1, @WRD2, @WRD3, {string.Join(", ", blobs.Select(b => b.Name))}
                 )
                 """,
-                ct,
-                [.. WordParameters(word),
-                 ("@IMG1", word.Image1), ("@IMG2", word.Image2), ("@IMG3", word.Image3),
-                 ("@AUD1", word.Audio1), ("@AUD2", word.Audio2), ("@AUD3", word.Audio3)]);
+                ct, [.. WordParameters(word), .. blobs.Select(b => (b.Name, (object?)b.Value))]);
         }
 
-        public async Task UpdateWordAsync(TWord word, CancellationToken ct = default)
+        public Task UpdateWordAsync(TWord word, CancellationToken ct = default)
         {
-            var sql = new StringBuilder(
-                """
+            // Como no original: blobs só são sobrescritos quando um arquivo novo foi enviado.
+            var blobs = Blobs(word).Where(b => b.Value is { Length: > 0 }).ToList();
+            return db.ExecuteAsync(
+                $"""
                 UPDATE VOCABULARY SET
                   VCB_KANA = @KAN, VCB_ROMAJI = @RMJ, VCB_KANJI_1 = @KNJ1, VCB_KANJI_2 = @KNJ2, VCB_KANJI_3 = @KNJ3,
                   VCB_SBJ_ID_1 = @SBJ1, VCB_SBJ_ID_2 = @SBJ2, VCB_SBJ_ID_3 = @SBJ3, VCB_TRANSLATION_1 = @WRD1,
-                  VCB_TRANSLATION_2 = @WRD2, VCB_TRANSLATION_3 = @WRD3
-                """);
-            var parameters = new List<(string, object?)>(WordParameters(word)) { ("@ID", word.ID) };
-
-            // Como no original: blobs só são sobrescritos quando um arquivo novo foi enviado.
-            void AddBlob(string column, string name, byte[]? value)
-            {
-                if (value is not { Length: > 0 }) return;
-                sql.Append($", {column} = {name}");
-                parameters.Add((name, value));
-            }
-            AddBlob("VCB_IMAGE_1", "@IMG1", word.Image1);
-            AddBlob("VCB_IMAGE_2", "@IMG2", word.Image2);
-            AddBlob("VCB_IMAGE_3", "@IMG3", word.Image3);
-            AddBlob("VCB_AUDIO_1", "@AUD1", word.Audio1);
-            AddBlob("VCB_AUDIO_2", "@AUD2", word.Audio2);
-            AddBlob("VCB_AUDIO_3", "@AUD3", word.Audio3);
-
-            sql.Append(" WHERE VCB_ID = @ID");
-
-            await using var conn = await db.OpenAsync(ct);
-            await conn.ExecuteInTransactionAsync(sql.ToString(), ct, [.. parameters]);
+                  VCB_TRANSLATION_2 = @WRD2, VCB_TRANSLATION_3 = @WRD3{string.Concat(blobs.Select(b => $", {b.Column} = {b.Name}"))}
+                WHERE VCB_ID = @ID
+                """,
+                ct, [.. WordParameters(word), .. blobs.Select(b => (b.Name, (object?)b.Value)), ("@ID", word.ID)]);
         }
-
-        public Task<Monitor?> GetMonitorAsync(int userId, int wordId, CancellationToken ct = default) =>
-            monitors.GetAsync(MonitorTables.Vocabulary, userId, wordId, ct);
-
-        public Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default) =>
-            monitors.SaveAsync(MonitorTables.Vocabulary, monitor, ct);
 
         /// <summary>Vocabulário inteiro (VocabularyManager.VocabularyList — usado pelo dicionário).</summary>
-        public async Task<IReadOnlyList<TWord>> GetAllAsync(CancellationToken ct = default)
+        public Task<IReadOnlyList<TWord>> GetAllAsync(CancellationToken ct = default) => db.QueryAsync(SelectWord, Map, ct);
+
+        internal static Task<IReadOnlyList<TWord>> GetWordsAsync(IShinrikaiDb db, IReadOnlyList<int> ids, CancellationToken ct)
         {
-            await using var conn = await db.OpenAsync(ct);
-            return await conn.QueryAsync(SelectWord, Map, ct);
+            if (ids.Count == 0)
+                return Task.FromResult<IReadOnlyList<TWord>>([]);
+            var (inSql, parameters) = DbExtensions.InClause(ids);
+            return db.QueryAsync($"{SelectWord} WHERE VCB_ID IN ({inSql})", Map, ct, parameters);
         }
+
+        internal static Subject MapSubject(DbDataReader r) => new(r.GetInt("SBJ_ID"), r.GetNullableString("SBJ_NAME") ?? "");
+
+        private static (string Column, string Name, byte[]? Value)[] Blobs(TWord w) =>
+        [
+            ("VCB_IMAGE_1", "@IMG1", w.Image1), ("VCB_IMAGE_2", "@IMG2", w.Image2), ("VCB_IMAGE_3", "@IMG3", w.Image3),
+            ("VCB_AUDIO_1", "@AUD1", w.Audio1), ("VCB_AUDIO_2", "@AUD2", w.Audio2), ("VCB_AUDIO_3", "@AUD3", w.Audio3),
+        ];
 
         private static (string, object?)[] WordParameters(TWord word) =>
         [
@@ -215,12 +169,12 @@ namespace Nienow.Shinrikai.Vocabulary
             KanjiWord1 = r.GetNullableString("VCB_KANJI_1"),
             KanjiWord2 = r.GetNullableString("VCB_KANJI_2"),
             KanjiWord3 = r.GetNullableString("VCB_KANJI_3"),
-            HasImage1 = r.GetNullableString("IMG1") == "T",
-            HasImage2 = r.GetNullableString("IMG2") == "T",
-            HasImage3 = r.GetNullableString("IMG3") == "T",
-            HasAudio1 = r.GetNullableString("AUD1") == "T",
-            HasAudio2 = r.GetNullableString("AUD2") == "T",
-            HasAudio3 = r.GetNullableString("AUD3") == "T",
+            HasImage1 = r.GetFlag("IMG1"),
+            HasImage2 = r.GetFlag("IMG2"),
+            HasImage3 = r.GetFlag("IMG3"),
+            HasAudio1 = r.GetFlag("AUD1"),
+            HasAudio2 = r.GetFlag("AUD2"),
+            HasAudio3 = r.GetFlag("AUD3"),
         };
     }
 }

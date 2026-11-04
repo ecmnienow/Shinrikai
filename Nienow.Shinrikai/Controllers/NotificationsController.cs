@@ -15,8 +15,8 @@ namespace Nienow.Shinrikai.Controllers
     /// Sem <c>force</c>, só retorna mensagem se o aluno ainda não clicou em "Entendi".
     /// </summary>
     [ApiController]
-    [Route("api/notifications")]
     [Authorize]
+    [Route("api/notifications")]
     public sealed class NotificationsController(IUserRepository users) : ControllerBase
     {
         [HttpGet("{id:int}")]

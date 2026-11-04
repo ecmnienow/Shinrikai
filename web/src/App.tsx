@@ -4,29 +4,16 @@ import { AuthProvider, useAuth } from './auth/AuthContext'
 import { DialogProvider } from './components/Dialogs'
 import { STUDENT_MENU, TEACHER_MENU, type MenuItem } from './menu'
 import { AboutPage } from './pages/AboutPage'
-import { DictionaryPage } from './pages/DictionaryPage'
-import { ExercisesPage } from './pages/ExercisesPage'
-import { GrammarPage } from './pages/GrammarPage'
 import { HomePage } from './pages/HomePage'
-import { KanjiPage } from './pages/KanjiPage'
 import { LoginPage } from './pages/LoginPage'
-import { ExerciseRegisterPage } from './pages/register/ExerciseRegisterPage'
-import { GrammarRegisterPage } from './pages/register/GrammarRegisterPage'
-import { KanjiRegisterPage } from './pages/register/KanjiRegisterPage'
-import { TextRegisterPage } from './pages/register/TextRegisterPage'
-import { VocabularyRegisterPage } from './pages/register/VocabularyRegisterPage'
-import { TextPage } from './pages/TextPage'
-import { TranscriptionPage } from './pages/TranscriptionPage'
-import { VocabularyPage } from './pages/VocabularyPage'
 
 /** [Authorize] / [Authorize(Roles = "Administrator, Teacher")] do original. */
 function RequireAuth({ children, editors }: { children: ReactNode; editors?: boolean }) {
-  const { user, loading } = useAuth()
+  const { user, isEditor, loading } = useAuth()
   const location = useLocation()
   if (loading) return <p className="notice">Carregando…</p>
   if (!user) return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
-  if (editors && user.role !== 'Administrator' && user.role !== 'Teacher')
-    return <main><p className="notice error">Acesso restrito a professores e administradores.</p></main>
+  if (editors && !isEditor) return <main><p className="notice error">Acesso restrito a professores e administradores.</p></main>
   return <>{children}</>
 }
 
@@ -63,8 +50,7 @@ function Dropdown({ label, groups }: { label: string; groups: MenuItem[][] }) {
 }
 
 function Header() {
-  const { user, logout } = useAuth()
-  const isEditor = user?.role === 'Administrator' || user?.role === 'Teacher'
+  const { user, isEditor, logout } = useAuth()
   return (
     <header className="topbar">
       <Link to="/" className="brand">
@@ -90,8 +76,8 @@ function Header() {
   )
 }
 
-const auth = (page: ReactNode) => <RequireAuth>{page}</RequireAuth>
-const editors = (page: ReactNode) => <RequireAuth editors>{page}</RequireAuth>
+const routes = (items: MenuItem[], editors?: boolean) =>
+  items.map(({ to, page: Page }) => <Route key={to} path={to} element={<RequireAuth editors={editors}><Page /></RequireAuth>} />)
 
 export default function App() {
   return (
@@ -103,23 +89,8 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/sobre" element={<AboutPage />} />
             <Route path="/login" element={<LoginPage />} />
-
-            {/* Aluno */}
-            <Route path="/transcricao" element={auth(<TranscriptionPage />)} />
-            <Route path="/vocabulario" element={auth(<VocabularyPage />)} />
-            <Route path="/kanjis" element={auth(<KanjiPage />)} />
-            <Route path="/gramatica" element={auth(<GrammarPage />)} />
-            <Route path="/textos" element={auth(<TextPage />)} />
-            <Route path="/exercicios" element={auth(<ExercisesPage />)} />
-            <Route path="/dicionario" element={auth(<DictionaryPage />)} />
-
-            {/* Professor */}
-            <Route path="/professor/gramatica" element={editors(<GrammarRegisterPage />)} />
-            <Route path="/professor/vocabulario" element={editors(<VocabularyRegisterPage />)} />
-            <Route path="/professor/kanjis" element={editors(<KanjiRegisterPage />)} />
-            <Route path="/professor/textos" element={editors(<TextRegisterPage />)} />
-            <Route path="/professor/exercicios" element={editors(<ExerciseRegisterPage />)} />
-
+            {routes(STUDENT_MENU.flat())}
+            {routes(TEACHER_MENU, true)}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

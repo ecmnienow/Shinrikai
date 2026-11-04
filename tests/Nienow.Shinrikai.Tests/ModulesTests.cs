@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nienow.DataBaseConn;
 using Nienow.Shinrikai.Core;
+using Nienow.Shinrikai.Core.Adaptive;
 using Nienow.Shinrikai.Dictionary;
 using Nienow.Shinrikai.Exercises;
 using Nienow.Shinrikai.Grammar;
@@ -75,10 +76,19 @@ namespace Nienow.Shinrikai.Tests
 
         [Theory]
         [InlineData("n5", "N5")]
+        [InlineData(" n4 ", "N4")]
         [InlineData("none", null)]
+        [InlineData("NONE", null)]
         [InlineData("", null)]
         [InlineData(null, null)]
-        public void Level_is_normalized(string? input, string? expected) => Assert.Equal(expected, KanjiLevels.Normalize(input));
+        public void Level_is_normalized(string? input, string? expected) => Assert.Equal(expected, JlptLevel.Normalize(input));
+
+        [Theory]
+        [InlineData("n3", EJLPT.N1, EJLPT.N3)]
+        [InlineData(null, EJLPT.N5, EJLPT.N5)]
+        [InlineData("x", EJLPT.None, EJLPT.None)]
+        [InlineData("9", EJLPT.None, EJLPT.None)]
+        public void Level_is_parsed(string? input, EJLPT fallback, EJLPT expected) => Assert.Equal(expected, JlptLevel.Parse(input, fallback));
 
         [Theory]
         [InlineData("日", true)]
@@ -122,12 +132,6 @@ namespace Nienow.Shinrikai.Tests
             var map = GrammarService.BuildMap([G(1, EJLPT.N4, "009"), G(2, EJLPT.N4)], new HashSet<int>(), new HashSet<int>(), EJLPT.N5);
             Assert.Equal([2, 1], map[0].Items.Select(i => i.Id));
         }
-
-        [Theory]
-        [InlineData(null, null)]
-        [InlineData("none", null)]
-        [InlineData("n4", "N4")]
-        public void Level_is_normalized(string? input, string? expected) => Assert.Equal(expected, GrammarService.NormalizeLevel(input));
 
         [Fact]
         public void Requisites_are_padded_like_the_original()
@@ -173,26 +177,6 @@ namespace Nienow.Shinrikai.Tests
             public Task UpdateAsync(int id, string title, string? level, string body, CancellationToken ct = default) => Task.CompletedTask;
         }
 
-        private sealed class FakeMonitors : IMonitorStore
-        {
-            public Dictionary<(string Table, int User, int Item), Monitor> Rows { get; } = [];
-
-            public Task<Monitor?> GetAsync(MonitorTable table, int userId, int itemId, CancellationToken ct = default) =>
-                Task.FromResult(Rows.TryGetValue((table.Table, userId, itemId), out var m) ? m : null);
-
-            public Task<IReadOnlyDictionary<int, int>> GetCountersAsync(MonitorTable table, int userId, IReadOnlyList<int> itemIds, CancellationToken ct = default) =>
-                Task.FromResult<IReadOnlyDictionary<int, int>>(Rows
-                    .Where(r => r.Key.Table == table.Table && r.Key.User == userId && itemIds.Contains(r.Key.Item))
-                    .ToDictionary(r => r.Key.Item, r => r.Value.Counter));
-
-            public Task SaveAsync(MonitorTable table, Monitor monitor, CancellationToken ct = default)
-            {
-                if (monitor.IsNew) monitor.ID = Rows.Count + 1;
-                Rows[(table.Table, monitor.UsrID, monitor.VcbID)] = monitor;
-                return Task.CompletedTask;
-            }
-        }
-
         private sealed class NoKnowledge : IKnowledgeStore
         {
             public Task DeclareAsync(KnowledgeTable table, int userId, int itemId, DateTime now, CancellationToken ct = default) => Task.CompletedTask;
@@ -229,7 +213,7 @@ namespace Nienow.Shinrikai.Tests
         private sealed class FakeExercises : IExerciseRepository
         {
             public List<TExercise> Items { get; } = [];
-            public Dictionary<(int, int), Monitor> Monitors { get; } = [];
+
 
             public Task<IReadOnlyList<(int Id, EJLPT Level)>> ListAllAsync(CancellationToken ct = default) =>
                 Task.FromResult<IReadOnlyList<(int, EJLPT)>>(Items.Where(e => e.TextId == 0).Select(e => (e.ID, e.Level)).ToList());
@@ -240,15 +224,9 @@ namespace Nienow.Shinrikai.Tests
             public Task<TExercise?> GetAsync(int id, CancellationToken ct = default) => Task.FromResult(Items.FirstOrDefault(e => e.ID == id));
             public Task AddAsync(TExercise exercise, CancellationToken ct = default) { Items.Add(exercise); return Task.CompletedTask; }
             public Task UpdateAsync(TExercise exercise, CancellationToken ct = default) => Task.CompletedTask;
-            public Task<Monitor?> GetMonitorAsync(int userId, int exerciseId, CancellationToken ct = default) =>
-                Task.FromResult(Monitors.TryGetValue((userId, exerciseId), out var m) ? m : null);
-            public Task SaveMonitorAsync(Monitor monitor, CancellationToken ct = default)
-            {
-                if (monitor.IsNew) monitor.ID = Monitors.Count + 1;
-                Monitors[(monitor.UsrID, monitor.VcbID)] = monitor;
-                return Task.CompletedTask;
-            }
         }
+
+        private static ExercisesService Service(FakeExercises repo, FakeMonitors? monitors = null) => new(repo, monitors ?? new FakeMonitors());
 
         private static FakeExercises Seed()
         {
@@ -262,7 +240,7 @@ namespace Nienow.Shinrikai.Tests
         [Fact]
         public async Task General_list_takes_ten_without_text_exercises()
         {
-            var ids = await new ExercisesService(Seed()).ListAsync(EJLPT.N5, 0, 0, new Random(3));
+            var ids = await Service(Seed()).ListAsync(EJLPT.N5, 0, 0, new Random(3));
             Assert.Equal(10, ids.Count);
             Assert.DoesNotContain(ids, id => id > 12 && id < 99);
         }
@@ -270,33 +248,35 @@ namespace Nienow.Shinrikai.Tests
         [Fact]
         public async Task Grammar_list_filters_by_level()
         {
-            var ids = await new ExercisesService(Seed()).ListAsync(EJLPT.N5, 1, 0, new Random(3));
+            var ids = await Service(Seed()).ListAsync(EJLPT.N5, 1, 0, new Random(3));
             Assert.Equal([1, 2, 3, 4, 5], ids.Order());
         }
 
         [Fact]
         public async Task Both_grammar_and_text_is_rejected()
         {
-            await Assert.ThrowsAsync<ArgumentException>(() => new ExercisesService(Seed()).ListAsync(EJLPT.N5, 1, 9));
+            await Assert.ThrowsAsync<ArgumentException>(() => Service(Seed()).ListAsync(EJLPT.N5, 1, 9));
         }
 
         [Fact]
         public async Task Check_answer_feeds_monitor_and_tells_the_right_option_text()
         {
             var repo = Seed();
-            var service = new ExercisesService(repo);
+            var monitors = new FakeMonitors();
+            var service = Service(repo, monitors);
 
             Assert.True((await service.CheckAnswerAsync(4, 1, 2))!.OK);
             var wrong = await service.CheckAnswerAsync(4, 1, 3);
             Assert.False(wrong!.OK);
             Assert.Contains("\"b\"", wrong.Message);
-            Assert.Equal((1, 1), (repo.Monitors[(4, 1)].SuccessCounter, repo.Monitors[(4, 1)].FailCounter));
+            var monitor = monitors.Get(MonitorTables.Exercise, 4, 1);
+            Assert.Equal((1, 1), (monitor.SuccessCounter, monitor.FailCounter));
         }
 
         [Fact]
         public async Task Question_does_not_leak_the_right_answer()
         {
-            var q = await new ExercisesService(Seed()).GetQuestionAsync(1);
+            var q = await Service(Seed()).GetQuestionAsync(1);
             Assert.Equal(4, q!.Options.Count);
             Assert.DoesNotContain("RightAnswer", System.Text.Json.JsonSerializer.Serialize(q));
         }

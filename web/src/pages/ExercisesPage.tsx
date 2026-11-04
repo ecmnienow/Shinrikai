@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { api, errorMessage, post } from '../api/client'
 import type { ExerciseQuestion, Response } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
-import { PageTitle, shuffle } from '../components/common'
+import { EditLink, PageTitle, shuffle } from '../components/common'
 import { useDialogs } from '../components/Dialogs'
 import { HELP, HelpButton } from '../components/Help'
 
@@ -17,8 +16,6 @@ type Status = 'pending' | 'success' | 'fail'
 export function ExercisesPage() {
   const dialogs = useDialogs()
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const isEditor = user?.role === 'Administrator' || user?.role === 'Teacher'
   const [params] = useSearchParams()
   const grammarId = Number(params.get('grammarId') ?? 0)
   const textId = Number(params.get('textId') ?? 0)
@@ -52,7 +49,7 @@ export function ExercisesPage() {
       const q = await api<ExerciseQuestion>(`/exercises/${id}`)
       setQuestion({ ...q, options: shuffle(q.options) })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao carregar o exercício.')
+      setError(errorMessage(e, 'Falha ao carregar o exercício.'))
     }
   }
 
@@ -75,7 +72,7 @@ export function ExercisesPage() {
       return
     }
     try {
-      const result = await api<Response>(`/exercises/${current}/check`, { method: 'POST', json: { answer } })
+      const result = await post<Response>(`/exercises/${current}/check`, { answer })
       if (result.ok) await dialogs.success('Resposta correta!')
       else await dialogs.info(<>Resposta errada!<br />{result.message}</>)
 
@@ -96,7 +93,7 @@ export function ExercisesPage() {
         else navigate(0)
       }
     } catch (e) {
-      dialogs.error(e instanceof Error ? e.message : 'Falha ao corrigir.')
+      dialogs.error(errorMessage(e, 'Falha ao corrigir.'))
     }
   }
 
@@ -121,7 +118,7 @@ export function ExercisesPage() {
                 >
                   Exercício {i + 1} {s === 'success' && '✔'} {s === 'fail' && '✘'}
                 </button>
-                {isEditor && <Link className="icon edit" to={`/professor/exercicios?id=${id}`} title="Editar" aria-label={`Editar exercício ${i + 1}`}>✎</Link>}
+                <EditLink to={`/professor/exercicios?id=${id}`} label={`Editar exercício ${i + 1}`} />
               </li>
             )
           })}

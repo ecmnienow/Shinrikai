@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import type { Jlpt } from '../api/types'
+import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+import { LEVELS, type Jlpt } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 
 export function PageTitle({ children, help }: { children: ReactNode; help?: ReactNode }) {
   return (
@@ -11,16 +13,10 @@ export function PageTitle({ children, help }: { children: ReactNode; help?: Reac
 }
 
 /** Radios "Nenhum / N5 … N1" usados nos cadastros ("Nível aconselhado"). */
-export function LevelRadios({ value, onChange, name, includeNone = true }: {
-  value: Jlpt
-  onChange: (level: Jlpt) => void
-  name: string
-  includeNone?: boolean
-}) {
-  const options: Jlpt[] = includeNone ? ['None', 'N5', 'N4', 'N3', 'N2', 'N1'] : ['N5', 'N4', 'N3', 'N2', 'N1']
+export function LevelRadios({ value, onChange, name }: { value: Jlpt; onChange: (level: Jlpt) => void; name: string }) {
   return (
     <div className="row" role="radiogroup">
-      {options.map((l) => (
+      {(['None', ...LEVELS] as Jlpt[]).map((l) => (
         <label key={l} className="inline">
           <input type="radio" name={name} checked={value === l} onChange={() => onChange(l)} /> {l === 'None' ? 'Nenhum' : l}
         </label>
@@ -49,10 +45,15 @@ export function FileField({ label, accept, file, existing, existingLabel, onChan
   )
 }
 
+/** Atalho "✎" para o cadastro, visível só para professores e administradores. */
+export function EditLink({ to, label, className = 'icon edit' }: { to: string; label: string; className?: string }) {
+  const { isEditor } = useAuth()
+  return isEditor ? <Link className={className} to={to} title="Editar" aria-label={label}>✎</Link> : null
+}
+
 /** Toca um áudio (PlayAUdio do dicionário). */
 export function playAudio(url: string) {
-  const audio = new Audio(url)
-  audio.play().catch(() => {})
+  new Audio(url).play().catch(() => {})
 }
 
 /** Embaralha (ShuffleElements do site.js). */
@@ -63,35 +64,4 @@ export function shuffle<T>(items: T[]): T[] {
     ;[copy[i], copy[j]] = [copy[j], copy[i]]
   }
   return copy
-}
-
-/** Busca autenticada de um blob (imagem/áudio) → object URL. A API exige o token JWT. */
-export function useBlobUrl(path: string | null) {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!path) return
-    let revoked = false
-    let objectUrl: string | null = null
-    fetchBlobUrl(path).then((u) => {
-      if (revoked) {
-        if (u) URL.revokeObjectURL(u)
-        return
-      }
-      objectUrl = u
-      setUrl(u)
-    })
-    return () => {
-      revoked = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [path])
-  return url
-}
-
-export async function fetchBlobUrl(path: string): Promise<string | null> {
-  const { getToken } = await import('../api/client')
-  const token = getToken()
-  const res = await fetch(`/api${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-  if (!res.ok) return null
-  return URL.createObjectURL(await res.blob())
 }

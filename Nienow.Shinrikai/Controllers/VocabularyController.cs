@@ -5,22 +5,18 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Nienow.Helper;
 using Nienow.Shinrikai.Auth;
 using Nienow.Shinrikai.Core;
 using Nienow.Shinrikai.Monitoring;
 using Nienow.Shinrikai.User;
 using Nienow.Shinrikai.Vocabulary;
 using Nienow.Shinrikai.Vocabulary.Model;
-using Monitor = Nienow.Helper.Monitor;
 
 namespace Nienow.Shinrikai.Controllers
 {
     public sealed record GenerateVocabularyRequest(int SubjectId, bool ToJapanese, bool Mistakes);
 
     public sealed record CheckVocabularyRequest(string Subject, bool ToJapanese, IReadOnlyList<VocabularyAnswer> Answers);
-
-    public sealed record InteractionRequest(string Action, string? Option);
 
     /// <summary>Formulário de cadastro: campos do TWord + até 3 imagens e 3 áudios.</summary>
     public sealed class WordForm
@@ -50,26 +46,16 @@ namespace Nienow.Shinrikai.Controllers
             SubjectID1 = SubjectID1, SubjectID2 = SubjectID2, SubjectID3 = SubjectID3,
             KanjiWord1 = KanjiWord1, KanjiWord2 = KanjiWord2, KanjiWord3 = KanjiWord3,
             Word1 = Word1, Word2 = Word2, Word3 = Word3,
-            Image1 = Read(Image1), Image2 = Read(Image2), Image3 = Read(Image3),
-            Audio1 = Read(Audio1), Audio2 = Read(Audio2), Audio3 = Read(Audio3),
+            Image1 = Image1.ReadBytes(), Image2 = Image2.ReadBytes(), Image3 = Image3.ReadBytes(),
+            Audio1 = Audio1.ReadBytes(), Audio2 = Audio2.ReadBytes(), Audio3 = Audio3.ReadBytes(),
         };
-
-        private static byte[]? Read(IFormFile? file)
-        {
-            if (file is null || file.Length == 0) return null;
-            using var stream = file.OpenReadStream();
-            return stream.ToByteArray();
-        }
     }
 
     /// <summary>Port de VocabularyController (estudo + cadastro).</summary>
-    [ApiController]
     [Route("api/vocabulary")]
-    [Authorize]
-    public sealed class VocabularyController(VocabularyService vocabulary, IMonitoringService monitoring) : ControllerBase
+    public sealed class VocabularyController(VocabularyService vocabulary, IMonitoringService monitoring)
+        : StudyController(monitoring, "Estudo de vocabulario")
     {
-        private const string Screen = "Estudo de vocabulario";
-
         /// <summary>
         /// Assuntos (usado no estudo e no cadastro). O registro de "Pagina inicial" é feito pela tela
         /// de estudo via /interactions, para o cadastro não contar como acesso ao estudo.
@@ -92,31 +78,21 @@ namespace Nienow.Shinrikai.Controllers
         [HttpPost("check")]
         public async Task<ActionResult<IReadOnlyList<VocabularyResult>>> Check(CheckVocabularyRequest request, CancellationToken ct)
         {
-            if (request.Answers is not { Count: > 0 } || request.Answers.Count > VocabularyService.PageSize)
-                return BadRequest(Core.Response.Fail($"Envie de 1 a {VocabularyService.PageSize} respostas."));
+            if (!IsValidPage(request.Answers?.Count ?? 0))
+                return PageSizeError();
 
-            var results = await vocabulary.CheckAnswersAsync(User.UserId(), request.Subject, request.ToJapanese, request.Answers, ct);
+            var results = await vocabulary.CheckAnswersAsync(User.UserId(), request.Subject, request.ToJapanese, request.Answers!, ct);
             await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
             return Ok(results);
-        }
-
-        /// <summary>Registra navegação feita no cliente (Proxima pagina, Pagina anterior, Repetir lista).</summary>
-        [HttpPost("interactions")]
-        public async Task<IActionResult> Interaction(InteractionRequest request, CancellationToken ct)
-        {
-            await Log(request.Action, request.Option, ct);
-            return NoContent();
         }
 
         [HttpGet("words/{id:int}/{media:regex(^(image|audio)$)}/{slot:int:range(1,3)}")]
         public async Task<IActionResult> Media(int id, string media, int slot, CancellationToken ct)
         {
             var kind = media == "image" ? VocabularyMedia.Image : VocabularyMedia.Audio;
-            var bytes = await vocabulary.GetMediaAsync(id, kind, slot, ct);
-            if (bytes is null)
-                return NotFound();
-
-            return File(bytes, kind == VocabularyMedia.Image ? "image/jpeg" : "audio/mpeg");
+            return await vocabulary.GetMediaAsync(id, kind, slot, ct) is { } bytes
+                ? File(bytes, kind == VocabularyMedia.Image ? "image/jpeg" : "audio/mpeg")
+                : NotFound();
         }
 
         // ---- Cadastro (Administrator, Teacher) ----
@@ -137,14 +113,8 @@ namespace Nienow.Shinrikai.Controllers
 
         [HttpPost("words")]
         [Authorize(Roles = Roles.ContentEditors)]
-        [RequestSizeLimit(20 * 1024 * 1024)]
-        public async Task<ActionResult<Response>> SaveWord([FromForm] WordForm form, CancellationToken ct)
-        {
-            var response = await vocabulary.SaveWordAsync(form.ToWord(), ct);
-            return response.OK ? response : BadRequest(response);
-        }
-
-        private Task Log(string action, string? option, CancellationToken ct) =>
-            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
+        [RequestSizeLimit(MaxUploadBytes)]
+        public async Task<ActionResult<Response>> SaveWord([FromForm] WordForm form, CancellationToken ct) =>
+            Result(await vocabulary.SaveWordAsync(form.ToWord(), ct));
     }
 }

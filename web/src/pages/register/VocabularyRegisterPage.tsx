@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, ApiError } from '../../api/client'
+import { api, errorMessage, isNotFound, post } from '../../api/client'
 import type { Response, Subject, Word } from '../../api/types'
 import { FileField, PageTitle } from '../../components/common'
 import { useDialogs } from '../../components/Dialogs'
@@ -63,8 +63,8 @@ export function VocabularyRegisterPage() {
     try {
       fill(await api<Word>(`/vocabulary/words?kana=${encodeURIComponent(kana.trim())}`))
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) dialogs.alert('Palavra não encontrada!')
-      else dialogs.error(e instanceof Error ? e.message : 'Falha na busca.')
+      if (isNotFound(e)) dialogs.alert('Palavra não encontrada!')
+      else dialogs.error(errorMessage(e, 'Falha na busca.'))
     }
   }
 
@@ -96,7 +96,7 @@ export function VocabularyRegisterPage() {
 
     setBusy(true)
     try {
-      const response = await api<Response>('/vocabulary/words', { method: 'POST', body: form })
+      const response = await post<Response>('/vocabulary/words', form)
       await dialogs.info(response.message ?? (wordId === 0 ? 'Palavra cadastrada com sucesso!' : 'Palavra alterada com sucesso!'))
       if (wordId === 0) {
         setKana('')
@@ -106,7 +106,7 @@ export function VocabularyRegisterPage() {
         navigate(-1)
       }
     } catch (e) {
-      dialogs.error(e instanceof Error ? e.message : wordId === 0 ? 'Não foi possível cadastrar a nova palavra!' : 'Não foi possível alterar a palavra!')
+      dialogs.error(errorMessage(e, wordId === 0 ? 'Não foi possível cadastrar a nova palavra!' : 'Não foi possível alterar a palavra!'))
     } finally {
       setBusy(false)
     }

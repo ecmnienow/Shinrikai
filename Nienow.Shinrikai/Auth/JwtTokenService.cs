@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -37,39 +36,36 @@ namespace Nienow.Shinrikai.Auth
 
     public sealed record AuthenticatedUser(string Token, DateTime ExpiresAt, UserInfo User);
 
-    public sealed record UserInfo(int Id, string? Login, string? Name, EJLPT Jlpt, string Role);
+    public sealed record UserInfo(int Id, string? Login, string? Name, EJLPT Jlpt, string Role)
+    {
+        public static UserInfo From(TUser user) => new(user.ID, user.Login, user.Name, user.JLPT, user.Role);
+    }
 
     public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider clock)
     {
-        private readonly JwtOptions _options = options.Value;
-
         public AuthenticatedUser Issue(TUser user)
         {
+            var o = options.Value;
             var now = clock.GetUtcNow().UtcDateTime;
-            var expires = now.AddMinutes(_options.ExpirationMinutes);
-
-            var claims = new List<Claim>
-            {
-                new(ClaimTypes.NameIdentifier, user.ID.ToString()),
-                new(ClaimTypes.Name, user.Login ?? string.Empty),
-                new(ClaimTypes.GivenName, user.Name ?? string.Empty),
-                new(ClaimTypes.Role, user.Role),
-                new(ShinrikaiClaims.Jlpt, user.JLPT.ToString()),
-                new(ShinrikaiClaims.SessionId, Guid.NewGuid().ToString("N")),
-            };
+            var expires = now.AddMinutes(o.ExpirationMinutes);
 
             var token = new JwtSecurityToken(
-                issuer: _options.Issuer,
-                audience: _options.Audience,
-                claims: claims,
+                issuer: o.Issuer,
+                audience: o.Audience,
+                claims:
+                [
+                    new(ClaimTypes.NameIdentifier, user.ID.ToString()),
+                    new(ClaimTypes.Name, user.Login ?? string.Empty),
+                    new(ClaimTypes.GivenName, user.Name ?? string.Empty),
+                    new(ClaimTypes.Role, user.Role),
+                    new(ShinrikaiClaims.Jlpt, user.JLPT.ToString()),
+                    new(ShinrikaiClaims.SessionId, Guid.NewGuid().ToString("N")),
+                ],
                 notBefore: now,
                 expires: expires,
-                signingCredentials: new SigningCredentials(_options.SigningKey(), SecurityAlgorithms.HmacSha256));
+                signingCredentials: new SigningCredentials(o.SigningKey(), SecurityAlgorithms.HmacSha256));
 
-            return new AuthenticatedUser(
-                new JwtSecurityTokenHandler().WriteToken(token),
-                expires,
-                new UserInfo(user.ID, user.Login, user.Name, user.JLPT, user.Role));
+            return new AuthenticatedUser(new JwtSecurityTokenHandler().WriteToken(token), expires, UserInfo.From(user));
         }
     }
 

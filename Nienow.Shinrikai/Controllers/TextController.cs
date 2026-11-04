@@ -12,19 +12,15 @@ using Nienow.Shinrikai.User;
 namespace Nienow.Shinrikai.Controllers
 {
     /// <summary>Port de TextController (leitura com stretchtext + cadastro).</summary>
-    [ApiController]
     [Route("api/texts")]
-    [Authorize]
-    public sealed class TextController(TextService texts, UserService users, IMonitoringService monitoring) : ControllerBase
+    public sealed class TextController(TextService texts, UserService users, IMonitoringService monitoring)
+        : ShinrikaiController(monitoring, "Leitura de textos")
     {
-        private const string Screen = "Leitura de textos";
-
         [HttpGet]
         public async Task<IReadOnlyList<TextListGroup>> List(CancellationToken ct)
         {
             await Log("Pagina inicial", null, ct);
-            var level = (await users.GetUserAsync(User.Identity!.Name!, ct))?.JLPT ?? User.Jlpt();
-            return await texts.ListAsync(level, ct);
+            return await texts.ListAsync(await CurrentLevelAsync(users, ct), ct);
         }
 
         /// <summary>GetText: corpo com furigana escondida conforme o conhecimento do aluno.</summary>
@@ -65,13 +61,7 @@ namespace Nienow.Shinrikai.Controllers
 
         [HttpPost]
         [Authorize(Roles = Roles.ContentEditors)]
-        public async Task<ActionResult<Core.Response>> Save(TextForm form, CancellationToken ct)
-        {
-            var response = await texts.SaveAsync(form, ct);
-            return response.OK ? response : BadRequest(response);
-        }
-
-        private Task Log(string action, string? option, CancellationToken ct) =>
-            monitoring.AddAsync(User.UserId(), Screen, action, option, User.SessionId(), ct);
+        public async Task<ActionResult<Response>> Save(TextForm form, CancellationToken ct) =>
+            Result(await texts.SaveAsync(form, ct));
     }
 }

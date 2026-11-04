@@ -19,35 +19,21 @@ namespace Nienow.Shinrikai
     {
         public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken ct)
         {
-            ProblemDetails problem;
-            if (exception is DatabaseUnavailableException db)
-            {
-                logger.LogError(exception, "Banco de dados indisponível: {Message}", db.Message);
-                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                problem = new ProblemDetails
-                {
-                    Status = StatusCodes.Status503ServiceUnavailable,
-                    Title = "Banco de dados indisponível.",
-                    Detail = db.Message,
-                };
-            }
-            else
-            {
-                logger.LogError(exception, "Erro não tratado em {Path}", context.Request.Path);
-                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                problem = new ProblemDetails
-                {
-                    Status = StatusCodes.Status500InternalServerError,
-                    Title = "Ocorreu um erro inesperado.",
-                    Detail = env.IsDevelopment() ? exception.Message : null,
-                };
-            }
+            var unavailable = exception is DatabaseUnavailableException;
+            logger.LogError(exception, unavailable ? "Banco de dados indisponível" : "Erro não tratado em {Path}", context.Request.Path);
 
+            var status = unavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status500InternalServerError;
+            context.Response.StatusCode = status;
             return await problemDetails.TryWriteAsync(new ProblemDetailsContext
             {
                 HttpContext = context,
-                ProblemDetails = problem,
                 Exception = exception,
+                ProblemDetails = new ProblemDetails
+                {
+                    Status = status,
+                    Title = unavailable ? "Banco de dados indisponível." : "Ocorreu um erro inesperado.",
+                    Detail = unavailable || env.IsDevelopment() ? exception.Message : null,
+                },
             });
         }
     }

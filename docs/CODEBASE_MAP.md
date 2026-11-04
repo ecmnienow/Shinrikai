@@ -64,7 +64,7 @@ Nienow.Shinrikai.sln            solution (12 projetos + pasta tests)
 Directory.Build.props           net10.0, Nullable on, ImplicitUsings OFF, LangVersion latest
 global.json                     SDK 10.0.100, rollForward latestFeature
 .editorconfig                   namespaces em bloco, usings fora do namespace, System primeiro
-Nienow.Helper/                  Monitor (POCO de contadores), ExtensionMethods (ShuffleList, CleanText, ToByteArray)
+Nienow.Helper/                  Monitor (POCO de contadores), ExtensionMethods (ShuffleList)
 Nienow.Shinrikai.Core/          Enums.cs (EJLPT, EMode, ESex, Response) + Adaptive/ (algoritmos puros)
 Nienow.DataBaseConn/            conexão Firebird, helpers ADO.NET parametrizados, stores de monitor/conhecimento
 Nienow.Shinrikai.User/          UserModule.cs — login, cadastro, papéis, notificações de ajuda
@@ -102,7 +102,7 @@ Tests             → Core, Vocabulary, User, Kanji, Grammar, Text, Exercises, D
 | Arquivo | Propósito | Tokens |
 |---|---|---|
 | `Monitor.cs` | POCO de contadores por usuário/item: `ID, UsrID, VcbID, FailCounter, Counter, SuccessCounter, LastHittedTime`; `IsNew => ID == -1` | 258 |
-| `ExtensionMethods.cs` | `ShuffleList` (Fisher-Yates, `Random` injetável), `CleanText`, `ToByteArray` | 388 |
+| `ExtensionMethods.cs` | `ShuffleList` (Fisher-Yates, `Random` injetável) | 388 |
 
 O nome `Monitor` colide com `System.Threading.Monitor`: todo arquivo que o usa declara
 `using Monitor = Nienow.Helper.Monitor;`.
@@ -133,8 +133,8 @@ O nome `Monitor` colide com `System.Threading.Monitor`: todo arquivo que o usa d
 
 | Arquivo | Propósito | Tokens |
 |---|---|---|
-| `ShinrikaiDB.cs` | `IShinrikaiDb.OpenAsync`, `DbExtensions` (Command, QueryAsync, ScalarAsync, ExecuteInTransactionAsync, Get*, InClause), `DatabaseUnavailableException` + `Explain()` | 2235 |
-| `MonitorStore.cs` | `IMonitorStore` (contadores VOC/TRL/KAN/EXE_MONITOR) e `IKnowledgeStore` (conhecimento declarado em GRA/TEX_MONITOR) | 2358 |
+| `ShinrikaiDB.cs` | `IShinrikaiDb.OpenAsync`, `DbExtensions` sobre `IShinrikaiDb` (QueryAsync, QuerySingleOrDefaultAsync, ScalarAsync, ExecuteAsync em transação própria, Get*, InClause), `DatabaseUnavailableException` + `Explain()` | 2235 |
+| `MonitorStore.cs` | `IMonitorStore` (contadores VOC/TRL/KAN/EXE_MONITOR; `UpdateAsync` = ler ou criar, aplicar a regra e gravar), injetado direto nos serviços, e `IKnowledgeStore` (conhecimento declarado em GRA/TEX_MONITOR) | 2358 |
 
 - Cada operação abre uma `FbConnection` nova (o pool é do driver); cada escrita é uma transação própria.
 - Parâmetros sempre como tuplas `("@NOME", valor)`. Só nomes de tabela e coluna vindos de conjuntos
@@ -180,7 +180,7 @@ que são o que os testes cobrem.
 | `Program.cs` | Kestrel (endpoints da config, 20 MB de corpo), proxy reverso opcional, DI, JWT, Swagger (só Development), arquivos estáticos + fallback SPA | 2051 |
 | `ApiExceptionHandler.cs` | `DatabaseUnavailableException` → 503 com explicação; demais → 500 (detalhe só em Development) | 563 |
 | `Auth/JwtTokenService.cs` | `JwtOptions`, emissão HMAC-SHA256 (480 min), claims `jlpt` e `shinrikai_session`, `User.UserId()/Jlpt()/SessionId()` | 874 |
-| `Controllers/*.cs` | 9 controllers, 40 endpoints; cada um tem um `Log` que grava em INTERACTIONS | ~7.800 |
+| `Controllers/*.cs` | 9 controllers, 45 rotas. Base `ShinrikaiController` (`[Authorize]`, `Log` em INTERACTIONS com o nome da tela, nível do usuário, `Result`); `StudyController` acrescenta `POST interactions` (vocabulário, transcrição, kanjis) | ~7.800 |
 | `appsettings*.json`, `Properties/launchSettings.json` | Kestrel `http://localhost:5080`, `ReverseProxy:Enabled`, `Jwt:*`, connection string (perfil `Shinrikai`) | ~300 |
 
 **DI:** `TimeProvider`, `IShinrikaiDb`, `JwtTokenService`, `IMonitorStore` e `IKnowledgeStore` são
@@ -204,9 +204,9 @@ singletons. Repositórios e serviços são scoped. Enums trafegam como string (`
 
 | Área | Arquivos | Tokens |
 |---|---|---|
-| Entrada e shell | `main.tsx`, `App.tsx` (rotas, `RequireAuth`, cabeçalho, menus Aluno/Professor), `menu.ts` | ~1.700 |
+| Entrada e shell | `main.tsx`, `App.tsx` (`RequireAuth`, cabeçalho, menus Aluno/Professor), `menu.tsx` (itens de menu que também geram as rotas) | ~1.700 |
 | API e auth | `api/client.ts` (`api<T>()`, token no `sessionStorage`, tratamento de 401), `api/types.ts` (DTOs), `auth/AuthContext.tsx` | ~1.750 |
-| Componentes | `WordDrill` (vocabulário e transcrição), `ContentReader` (gramática e texto, timer de 20 s), `Dialogs` (alert/confirm/prompt/imagem), `Help` (notificações), `common` | ~5.700 |
+| Componentes | `Drill` (`useDrill` + `DrillForm`: vocabulário, transcrição e kanjis), `WordDrill`, `ContentReader` (carrega a própria lista), `ContentForm` (cadastros de gramática e texto) (gramática e texto, timer de 20 s), `Dialogs` (alert/confirm/prompt/imagem), `Help` (notificações), `common` | ~5.700 |
 | Editor | `RichEditor.tsx`, `extensions.ts` (nós `Furigana` e `VocabularyWord`), `fidelity.ts`, `VocabularyPicker.tsx` | ~5.600 |
 | Páginas | 10 páginas de estudo/públicas + 5 de cadastro em `pages/register/` | ~14.600 |
 | Estilo | `index.css`: folha global, variáveis CSS, tema escuro automático | 2.658 |
@@ -410,7 +410,7 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
 - **Nova tela no front:**
   1. Página em `web/src/pages/` (ou `pages/register/`).
   2. Rota em `App.tsx` com `auth()` ou `editors()`.
-  3. Item em `menu.ts`.
+  3. Item (com `page`) em `menu.tsx`; a rota sai dele.
   4. Ajuda: id em `components/Help.tsx` e linha em `NOTIFICATIONS` (`seed.sql`).
 - **Editor de texto:** `web/src/editor/RichEditor.tsx` (barra e modos), `extensions.ts` (nós),
   `fidelity.ts` (checagem), `VocabularyPicker.tsx` (escolher a palavra).

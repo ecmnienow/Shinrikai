@@ -34,17 +34,6 @@ export interface VocabularyItem {
   prompt: string
 }
 
-export interface DrillSession {
-  subject: string
-  mistakes: boolean
-  pages: VocabularyItem[][]
-  totalItems: number
-}
-
-export interface VocabularySession extends DrillSession {
-  toJapanese: boolean
-}
-
 export interface VocabularyResult {
   wordId: number
   prompt: string
@@ -83,13 +72,6 @@ export interface KanjiItem {
   kanjiId: number
   kanji: string
   inputs: number
-}
-
-export interface KanjiSession {
-  level: string
-  mistakes: boolean
-  pages: KanjiItem[][]
-  totalItems: number
 }
 
 export interface KanjiResult {
@@ -143,13 +125,6 @@ export interface GrammarRequisites {
 export interface GrammarSummary {
   id: number
   title: string
-}
-
-export interface TextContent {
-  index: number
-  title: string
-  level: Jlpt
-  body: string
 }
 
 // ---- Exercícios ----

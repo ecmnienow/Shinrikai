@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError } from '../api/client'
+import { api, errorMessage, isNotFound } from '../api/client'
 import type { Word } from '../api/types'
 import { Modal } from '../components/Dialogs'
 
@@ -28,12 +28,12 @@ export function VocabularyPicker({ initialTerm, onDone }: {
       try {
         byKana = [await api<Word>(`/vocabulary/words?kana=${encodeURIComponent(term.trim())}`)]
       } catch (err) {
-        if (!(err instanceof ApiError && err.status === 404)) throw err
+        if (!(isNotFound(err))) throw err
       }
       const all = [...byKana, ...byKanji].filter((w, i, arr) => arr.findIndex((x) => x.id === w.id) === i)
       setResults(all)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha na busca.')
+      setError(errorMessage(err, 'Falha na busca.'))
     }
   }
 
