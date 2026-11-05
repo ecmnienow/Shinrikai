@@ -17,6 +17,24 @@ export interface AuthenticatedUser {
   user: UserInfo
 }
 
+/** GET /api/profile: dados do usuário logado (login e papel só para exibição). */
+export interface UserProfile {
+  login: string
+  name: string | null
+  email: string | null
+  sex: 'Male' | 'Female'
+  birthday: string | null
+  profession: string | null
+  otherLanguages: string | null
+  jlpt: Jlpt
+  role: Role
+}
+
+export interface ProfileUpdateResult {
+  message: string | null
+  user: UserInfo
+}
+
 export interface Response {
   ok: boolean
   message?: string

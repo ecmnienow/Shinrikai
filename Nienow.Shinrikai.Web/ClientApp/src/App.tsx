@@ -6,6 +6,7 @@ import { STUDENT_MENU, TEACHER_MENU, type MenuItem } from './menu'
 import { AboutPage } from './pages/AboutPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
+import { ProfilePage } from './pages/ProfilePage'
 
 /** [Authorize] / [Authorize(Roles = "Administrator, Teacher")] do original. */
 function RequireAuth({ children, editors }: { children: ReactNode; editors?: boolean }) {
@@ -66,7 +67,7 @@ function Header() {
       <NavLink to="/sobre">Sobre</NavLink>
       {user ? (
         <>
-          <span className="muted user">{user.name} · {user.jlpt === 'None' ? 'sem nível' : user.jlpt}</span>
+          <NavLink to="/perfil" className="user" title="Meus dados">{user.name} · {user.jlpt === 'None' ? 'sem nível' : user.jlpt}</NavLink>
           <button type="button" className="link" onClick={logout}>Sair</button>
         </>
       ) : (
@@ -89,6 +90,7 @@ export default function App() {
             <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
             <Route path="/sobre" element={<AboutPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/perfil" element={<RequireAuth><ProfilePage /></RequireAuth>} />
             {routes(STUDENT_MENU.flat())}
             {routes(TEACHER_MENU, true)}
             <Route path="*" element={<Navigate to="/" replace />} />

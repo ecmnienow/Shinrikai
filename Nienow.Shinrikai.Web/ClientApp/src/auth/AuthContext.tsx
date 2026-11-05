@@ -9,6 +9,8 @@ interface AuthState {
   loading: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  /** Atualiza o usuário exibido (nome, nível) depois de editar o perfil. */
+  updateUser: (user: UserInfo) => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -40,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, isEditor: user?.role === 'Administrator' || user?.role === 'Teacher', loading, login, logout }),
+    () => ({ user, isEditor: user?.role === 'Administrator' || user?.role === 'Teacher', loading, login, logout, updateUser: setUser }),
     [user, loading, login, logout],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

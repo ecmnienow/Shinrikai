@@ -31,6 +31,27 @@ namespace Nienow.Shinrikai.User
         public string Role => Roles.FromUserType(Type);
     }
 
+    /// <summary>
+    /// Dados que o próprio usuário pode alterar. Login e tipo (USR_TYPE) ficam de fora de propósito:
+    /// o login identifica o usuário no token e o tipo só pode ser mudado pelo administrador.
+    /// A senha nova é opcional; quando informada, exige a senha atual.
+    /// </summary>
+    public sealed class TProfileUpdate
+    {
+        public string? Name { get; set; }
+        public string? Email { get; set; }
+        public ESex Sex { get; set; }
+        public DateTime? Birthday { get; set; }
+        public string? Profession { get; set; }
+        public string? OtherLanguages { get; set; }
+        public EJLPT JLPT { get; set; }
+        public string? CurrentPassword { get; set; }
+        public string? NewPassword { get; set; }
+        public string? RepeatPassword { get; set; }
+
+        public bool ChangesPassword => !string.IsNullOrEmpty(NewPassword) || !string.IsNullOrEmpty(RepeatPassword);
+    }
+
     public static class Roles
     {
         public const string Administrator = "Administrator";
@@ -53,6 +74,7 @@ namespace Nienow.Shinrikai.User
         Task<TUser?> GetByEmailAsync(string email, CancellationToken ct = default);
         Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default);
         Task SignUpAsync(TUser user, CancellationToken ct = default);
+        Task UpdateProfileAsync(int userId, TProfileUpdate profile, CancellationToken ct = default);
         Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default);
         Task DeclareUnderstandingAsync(int userId, int notificationId, CancellationToken ct = default);
     }
@@ -97,6 +119,33 @@ namespace Nienow.Shinrikai.User
                 ("@JOB", user.Profession),
                 ("@LNG", user.OtherLanguages),
                 ("@JLPT", user.JLPT == EJLPT.None ? null : user.JLPT.ToString()));
+
+        /// <summary>Não altera USR_LOGIN nem USR_TYPE; USR_PASS só entra no UPDATE quando há senha nova.</summary>
+        public Task UpdateProfileAsync(int userId, TProfileUpdate profile, CancellationToken ct = default)
+        {
+            var parameters = new List<(string Name, object? Value)>
+            {
+                ("@USR", profile.Name),
+                ("@EML", profile.Email),
+                ("@SEX", profile.Sex == ESex.Male ? "M" : "F"),
+                ("@DAT", profile.Birthday),
+                ("@JOB", profile.Profession),
+                ("@LNG", profile.OtherLanguages),
+                ("@JLPT", profile.JLPT == EJLPT.None ? null : profile.JLPT.ToString()),
+                ("@ID", userId),
+            };
+            if (profile.ChangesPassword)
+                parameters.Add(("@PSS", profile.NewPassword));
+
+            return db.ExecuteAsync(
+                $"""
+                UPDATE USERS SET
+                  USR_NAME = @USR, USR_EMAIL = @EML, USR_SEX = @SEX, USR_BIRTHDAY = @DAT,
+                  USR_PROFISSION = @JOB, USR_OTHERLANGUAGES = @LNG, USR_JLPT = @JLPT{(profile.ChangesPassword ? ", USR_PASS = @PSS" : "")}
+                WHERE USRID = @ID
+                """,
+                ct, [.. parameters]);
+        }
 
         public async Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default) =>
             await db.ScalarAsync(
@@ -187,6 +236,48 @@ namespace Nienow.Shinrikai.User
                 return Response.Fail("A senha repetida não é a mesma de senha informada.");
 
             return Response.Ok();
+        }
+
+        /// <summary>Validações da edição de perfil que não dependem do banco.</summary>
+        public static Response ValidateProfile(TProfileUpdate profile)
+        {
+            if (string.IsNullOrWhiteSpace(profile.Name))
+                return Response.Fail("Nome de usuário inválido.");
+            if (string.IsNullOrEmpty(profile.Email) || !EmailRegex().IsMatch(profile.Email))
+                return Response.Fail("Email inválido.");
+            if (!profile.ChangesPassword)
+                return Response.Ok();
+            if (string.IsNullOrEmpty(profile.CurrentPassword))
+                return Response.Fail("Informe a senha atual para trocar a senha.");
+            if (profile.NewPassword is not { Length: >= MinPasswordLength })
+                return Response.Fail($"A senha deve ter pelo menos {MinPasswordLength} dígitos.");
+            if (profile.RepeatPassword != profile.NewPassword)
+                return Response.Fail("A senha repetida não é a mesma de senha informada.");
+
+            return Response.Ok();
+        }
+
+        /// <summary>Altera os dados do usuário <paramref name="login"/> (sempre o do token, nunca vindo do cliente).</summary>
+        public async Task<Response> UpdateProfileAsync(string login, TProfileUpdate profile, CancellationToken ct = default)
+        {
+            profile.Name = profile.Name?.Trim();
+            profile.Email = profile.Email?.Trim();
+
+            var validation = ValidateProfile(profile);
+            if (!validation.OK)
+                return validation;
+
+            if (await repository.GetByLoginAsync(login, ct) is not { } user)
+                return Response.Fail("Usuário não encontrado.");
+
+            if (await repository.GetByEmailAsync(profile.Email!, ct) is { } other && other.ID != user.ID)
+                return Response.Fail($"O email \"{profile.Email}\" já esta em uso.");
+
+            if (profile.ChangesPassword && await LoginAsync(login, profile.CurrentPassword!, ct) is null)
+                return Response.Fail("Senha atual incorreta.");
+
+            await repository.UpdateProfileAsync(user.ID, profile, ct);
+            return Response.Ok("Dados alterados com sucesso!");
         }
 
         public async Task<Response> SignUpAsync(TUser user, CancellationToken ct = default)
