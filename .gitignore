@@ -356,3 +356,6 @@ database/data/
 *.FDB
 *.fdb
 *.fbk
+
+# Segredos do docker compose (modelo em .env.example)
+.env

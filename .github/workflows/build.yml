@@ -84,3 +84,19 @@ jobs:
 
       - name: Build web
         run: npm --prefix Nienow.Shinrikai.Web/ClientApp run build
+
+  # Monta as imagens dos containers (sem publicar em registry) e valida o compose.yaml.
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose.yaml
+        run: cp .env.example .env && docker compose config --quiet
+
+      - name: Build API image
+        run: docker build -f Nienow.Shinrikai.Api/Dockerfile -t shinrikai-api:${{ github.sha }} .
+
+      - name: Build Web image
+        run: docker build -f Nienow.Shinrikai.Web/Dockerfile -t shinrikai-web:${{ github.sha }} .

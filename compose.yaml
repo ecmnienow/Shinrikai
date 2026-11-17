@@ -1,0 +1,69 @@
+# Shinrikai em containers: Firebird 5 + API + interface.
+#   cp .env.example .env    (e troque as senhas e a chave)
+#   docker compose up --build
+#   http://localhost:8090
+#
+# Só a interface é publicada no host. A API fica na rede interna e só é alcançada pelo YARP da
+# interface, como seria com ingress interno no Azure Container Apps.
+
+name: shinrikai
+
+services:
+  firebird:
+    image: firebirdsql/firebird:5.0.4
+    environment:
+      FIREBIRD_ROOT_PASSWORD: ${FIREBIRD_ROOT_PASSWORD:?defina FIREBIRD_ROOT_PASSWORD no .env}
+      # Usuário da aplicação (a API não usa o SYSDBA). Ele cria o banco e é o dono.
+      FIREBIRD_USER: shinrikai
+      FIREBIRD_PASSWORD: ${FIREBIRD_PASSWORD:?defina FIREBIRD_PASSWORD no .env}
+      # Criado em /var/lib/firebird/data só na primeira subida (volume vazio).
+      FIREBIRD_DATABASE: shinrikai.fdb
+      FIREBIRD_DATABASE_PAGE_SIZE: 16384
+      FIREBIRD_DATABASE_DEFAULT_CHARSET: UTF8
+    volumes:
+      - firebird-data:/var/lib/firebird/data
+      # schema.sql e seed.sql, executados pelo init-shinrikai.sh ao criar o banco.
+      - ./database:/shinrikai:ro
+      - ./database/docker/init-shinrikai.sh:/docker-entrypoint-initdb.d/10-shinrikai.sh:ro
+    ports:
+      # Para IBExpert/DBeaver/isql do Windows. Não é a 3050 para não colidir com o Firebird local.
+      - "127.0.0.1:3055:3050"
+    healthcheck:
+      # Responde só depois de o banco existir e o servidor aceitar conexões pela rede.
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM RDB$$DATABASE;' | /opt/firebird/bin/isql -b -q -u \"$$FIREBIRD_USER\" -p \"$$FIREBIRD_PASSWORD\" localhost:/var/lib/firebird/data/shinrikai.fdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Nienow.Shinrikai.Api/Dockerfile
+    environment:
+      # A senha não pode conter ";" (separador da connection string).
+      ConnectionStrings__ShinrikaiDB: "character set=UTF8;initial catalog=/var/lib/firebird/data/shinrikai.fdb;data source=firebird;port=3050;dialect=3;user id=shinrikai;password=${FIREBIRD_PASSWORD}"
+      Jwt__Key: ${JWT_KEY:?defina JWT_KEY no .env (mínimo de 32 bytes)}
+      # A API só é alcançável pela interface (rede interna), então pode confiar no X-Forwarded-*.
+      ReverseProxy__Enabled: "true"
+    depends_on:
+      firebird:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Nienow.Shinrikai.Web/Dockerfile
+    environment:
+      ReverseProxy__Clusters__api__Destinations__shinrikai-api__Address: http://api:8080/
+    ports:
+      # Porta no Windows configurável (WEB_PORT no .env). A 8080 costuma estar ocupada.
+      - "${WEB_PORT:-8090}:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  firebird-data:

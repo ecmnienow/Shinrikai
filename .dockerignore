@@ -1,0 +1,20 @@
+# Contexto de build das imagens (docker build . / compose.yaml): só o necessário para compilar.
+**/bin/
+**/obj/
+**/node_modules/
+Nienow.Shinrikai.Web/wwwroot/
+**/*.user
+.git/
+.github/
+.vs/
+.vscode/
+.claude/
+.sonar/
+database/
+docs/
+tests/
+**/*.md
+.env
+.env.*
+Dockerfile*
+compose*.yaml

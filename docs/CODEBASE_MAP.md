@@ -84,7 +84,10 @@ Nienow.Shinrikai.Web/           interface: Program.cs (arquivos estáticos + fal
 Nienow.Shinrikai.Web/ClientApp/ front React + Vite + TipTap (build vai para Nienow.Shinrikai.Web/wwwroot)
 tests/Nienow.Shinrikai.Tests/   xUnit; Legacy/ = cópias literais do código original (oráculo)
 database/                       schema.sql, seed.sql e scripts PowerShell (criar, conectar, promover)
-.github/workflows/build.yml     CI: build, testes, Sonar (não bloqueante), build do ClientApp
+database/docker/                init-shinrikai.sh: schema + seed no Firebird do container (só na criação)
+*/Dockerfile                    imagens da API e da interface (contexto: raiz do repositório)
+compose.yaml, .env.example      Firebird 5.0.4 + API + interface; segredos no .env (ignorado pelo git)
+.github/workflows/build.yml     CI: build, testes, Sonar (não bloqueante), build do ClientApp, imagens Docker
 .claude/launch.json             servidores de preview: API :5080, Vite :5173 e host da interface :5090
 ```
 
@@ -444,4 +447,9 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
   - Endereço da API usado pela interface: `ReverseProxy:Clusters:api` no `appsettings.json` do Web.
   - Publicar: `dotnet publish Nienow.Shinrikai.Api -c Release` e `dotnet publish Nienow.Shinrikai.Web -c Release`
     (este já roda o build do React).
+- **Containers:**
+  - `compose.yaml` na raiz, segredos no `.env` (modelo em `.env.example`). Só a interface é publicada
+    (porta 8090 no host, `WEB_PORT` no `.env`); o Firebird aparece em `localhost:3055`.
+  - As imagens escutam na 8080 via `Kestrel__Endpoints__Http__Url`, porque o `appsettings.json` usa `localhost`.
+  - O `init-shinrikai.sh` só roda com o volume vazio. Mudou o schema, então `docker compose down -v`.
 - **CI:** `.github/workflows/build.yml`. O Sonar é não bloqueante e cada comando fica no seu step.

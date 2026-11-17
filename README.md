@@ -117,6 +117,39 @@ dotnet publish Nienow.Shinrikai.Web -c Release -o out/web   # dotnet out/web/Nie
 O `dotnet publish` do `Nienow.Shinrikai.Web` roda `npm ci` + `npm run build` em `ClientApp` e publica o
 `wwwroot` junto (`-p:SkipClientApp=true` reaproveita um build já feito).
 
+### Containers (Docker)
+
+Cada processo tem a sua imagem, com a raiz do repositório como contexto de build:
+
+- `Nienow.Shinrikai.Api/Dockerfile`: SDK do .NET 10 → `aspnet:10.0`, usuário sem privilégios, porta 8080.
+- `Nienow.Shinrikai.Web/Dockerfile`: Node 22 gera o build do React, o SDK publica o host
+  (`-p:SkipClientApp=true`) e a imagem final é `aspnet:10.0` na porta 8080.
+
+O `compose.yaml` sobe o sistema inteiro: Firebird 5.0.4 (imagem oficial `firebirdsql/firebird`), API e
+interface. Só a interface é publicada no host. A API fica na rede interna e só o YARP da interface chega
+até ela. Na primeira subida (volume vazio), o banco é criado e o `database/docker/init-shinrikai.sh` roda
+o `schema.sql` e o `seed.sql`. A API usa o usuário `shinrikai`, não o SYSDBA.
+
+```bash
+cp .env.example .env          # troque as senhas e a JWT_KEY
+docker compose up --build     # http://localhost:8090 (WEB_PORT no .env muda a porta)
+```
+
+Para dar papel de administrador, cadastre-se pela tela e rode o `isql` do container:
+
+```bash
+docker compose exec firebird bash -c '/opt/firebird/bin/isql -ch UTF8 -u "$FIREBIRD_USER" -p "$FIREBIRD_PASSWORD" localhost:/var/lib/firebird/data/shinrikai.fdb'
+```
+
+```sql
+UPDATE USERS SET USR_TYPE = 'A' WHERE USR_LOGIN = 'seu-login';
+COMMIT;
+```
+
+O Firebird do container também aparece no Windows em `localhost:3055` (IBExpert, DBeaver), sem
+colidir com o serviço local da 3050. `docker compose down -v` apaga o volume e, com ele, o banco. O job
+`docker` do CI monta as duas imagens e valida o `compose.yaml` a cada push.
+
 ### Banco novo (vazio)
 
 `database/` cria o banco no Firebird local com o mesmo esquema do original (16 tabelas, 15
