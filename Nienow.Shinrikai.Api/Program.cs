@@ -59,6 +59,7 @@ services.AddSingleton<IKnowledgeStore, KnowledgeStore>();
 services.AddScoped<IMonitoringService, MonitoringService>();
 services.AddScoped<IUserRepository, UserRepository>().AddScoped<UserService>();
 services.AddScoped<IVocabularyRepository, VocabularyRepository>().AddScoped<VocabularyService>();
+services.AddScoped<ISubjectRepository, SubjectRepository>().AddScoped<SubjectService>();
 services.AddScoped<ITranscriptionRepository, TranscriptionRepository>().AddScoped<TranscriptionService>();
 services.AddScoped<IKanjiRepository, KanjiRepository>().AddScoped<KanjiService>();
 services.AddScoped<IGrammarRepository, GrammarRepository>().AddScoped<GrammarService>();

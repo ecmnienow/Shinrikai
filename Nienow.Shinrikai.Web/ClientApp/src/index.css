@@ -208,3 +208,10 @@ mark { background: var(--warn-bg); color: inherit; }
 .picker-list button { width: 100%; text-align: left; }
 details { margin-top: 0.75rem; }
 .about p { margin: 0 0 1rem; }
+
+/* ---- Tabelas de cadastro ---- */
+.data-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.data-table th, .data-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); text-align: left; }
+.data-table th { background: var(--surface-2); font-size: 0.9rem; }
+.data-table tr.selected td { background: var(--surface-2); }
+.data-table td.actions { width: 1%; white-space: nowrap; text-align: right; }

@@ -6,6 +6,7 @@ import { KanjiPage } from './pages/KanjiPage'
 import { ExerciseRegisterPage } from './pages/register/ExerciseRegisterPage'
 import { GrammarRegisterPage } from './pages/register/GrammarRegisterPage'
 import { KanjiRegisterPage } from './pages/register/KanjiRegisterPage'
+import { SubjectRegisterPage } from './pages/register/SubjectRegisterPage'
 import { TextRegisterPage } from './pages/register/TextRegisterPage'
 import { VocabularyRegisterPage } from './pages/register/VocabularyRegisterPage'
 import { TextPage } from './pages/TextPage'
@@ -36,6 +37,7 @@ export const STUDENT_MENU: MenuItem[][] = [
 export const TEACHER_MENU: MenuItem[] = [
   { to: '/professor/gramatica', label: 'Cadastro de gramática', page: GrammarRegisterPage },
   { to: '/professor/vocabulario', label: 'Cadastro de vocabulário', page: VocabularyRegisterPage },
+  { to: '/professor/assuntos', label: 'Cadastro de assuntos', page: SubjectRegisterPage },
   { to: '/professor/kanjis', label: 'Cadastro de kanjis', page: KanjiRegisterPage },
   { to: '/professor/textos', label: 'Cadastro de textos', page: TextRegisterPage },
   { to: '/professor/exercicios', label: 'Cadastro de exercícios', page: ExerciseRegisterPage },
