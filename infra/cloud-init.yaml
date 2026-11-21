@@ -1,0 +1,55 @@
+#cloud-config
+# VM do Firebird. Roda uma única vez, no primeiro boot. Os marcadores __X__ são trocados pelo
+# resources.bicep (senhas e os arquivos de database/ em base64).
+package_update: true
+packages:
+  - docker.io
+
+write_files:
+  - path: /opt/shinrikai/firebird.env
+    permissions: '0600'
+    content: |
+      FIREBIRD_ROOT_PASSWORD=__FIREBIRD_ROOT_PASSWORD__
+      FIREBIRD_USER=shinrikai
+      FIREBIRD_PASSWORD=__FIREBIRD_PASSWORD__
+      FIREBIRD_DATABASE=shinrikai.fdb
+      FIREBIRD_DATABASE_PAGE_SIZE=16384
+      FIREBIRD_DATABASE_DEFAULT_CHARSET=UTF8
+  - path: /opt/shinrikai/sql/schema.sql
+    encoding: b64
+    content: __SCHEMA_B64__
+  - path: /opt/shinrikai/sql/seed.sql
+    encoding: b64
+    content: __SEED_B64__
+  - path: /opt/shinrikai/init-shinrikai.sh
+    encoding: b64
+    permissions: '0755'
+    content: __INIT_B64__
+  - path: /opt/shinrikai/setup-firebird.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Formata o disco de dados (LUN 0) só se estiver vazio, monta em /srv/firebird e sobe o Firebird.
+      set -euo pipefail
+      DATA=/srv/firebird
+      DISK=""
+      for link in /dev/disk/azure/data/by-lun/0 /dev/disk/azure/scsi1/lun0; do
+          if [ -e "$link" ]; then DISK=$(readlink -f "$link"); break; fi
+      done
+      [ -n "$DISK" ] || { echo "Shinrikai: disco de dados (LUN 0) não encontrado" >&2; exit 1; }
+      blkid "$DISK" >/dev/null 2>&1 || mkfs.ext4 -q -L firebird-data "$DISK"
+      mkdir -p "$DATA"
+      grep -q 'LABEL=firebird-data' /etc/fstab || echo 'LABEL=firebird-data /srv/firebird ext4 defaults,nofail 0 2' >> /etc/fstab
+      mount -a
+      # 84 = usuário firebird dentro da imagem.
+      chown 84:84 "$DATA"
+      docker run -d --name firebird --restart unless-stopped -p 3050:3050 \
+          --env-file /opt/shinrikai/firebird.env \
+          -v "$DATA":/var/lib/firebird/data \
+          -v /opt/shinrikai/sql:/shinrikai:ro \
+          -v /opt/shinrikai/init-shinrikai.sh:/docker-entrypoint-initdb.d/10-shinrikai.sh:ro \
+          firebirdsql/firebird:5.0.4
+      echo "Shinrikai: Firebird iniciado"
+
+runcmd:
+  - /opt/shinrikai/setup-firebird.sh

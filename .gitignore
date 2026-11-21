@@ -359,3 +359,6 @@ database/data/
 
 # Segredos do docker compose (modelo em .env.example)
 .env
+
+# Segredos do Shinrikai no Azure (gerados por infra/deploy.ps1)
+infra/.azure.env

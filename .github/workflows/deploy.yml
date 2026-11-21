@@ -1,0 +1,67 @@
+name: Deploy (Azure)
+
+# Depois de um Build com sucesso num push para o master (ou manualmente): monta as imagens, envia ao
+# Azure Container Registry e atualiza os Container Apps. A infraestrutura (infra/*.bicep) é implantada
+# pelo infra/deploy.ps1, não por aqui.
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # token OIDC para o azure/login, sem segredo guardado
+  contents: read
+
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-shinrikai
+
+jobs:
+  deploy:
+    name: Deploy
+    # Só roda depois do primeiro infra/deploy.ps1, que cria a identidade e as variáveis AZURE_*.
+    if: >-
+      vars.AZURE_CLIENT_ID != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Registry login
+        id: acr
+        run: |
+          name=$(az acr list -g "$RESOURCE_GROUP" --query '[0].name' -o tsv)
+          echo "server=$(az acr show -n "$name" --query loginServer -o tsv)" >> "$GITHUB_OUTPUT"
+          az acr login -n "$name"
+
+      - name: Build and push images
+        run: |
+          tag=${SHA::7}
+          docker build -f Nienow.Shinrikai.Api/Dockerfile -t "${{ steps.acr.outputs.server }}/shinrikai-api:$tag" .
+          docker build -f Nienow.Shinrikai.Web/Dockerfile -t "${{ steps.acr.outputs.server }}/shinrikai-web:$tag" .
+          docker push "${{ steps.acr.outputs.server }}/shinrikai-api:$tag"
+          docker push "${{ steps.acr.outputs.server }}/shinrikai-web:$tag"
+
+      - name: Update container apps
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt
+          tag=${SHA::7}
+          az containerapp update -g "$RESOURCE_GROUP" -n shinrikai-api --image "${{ steps.acr.outputs.server }}/shinrikai-api:$tag" --query properties.latestRevisionName -o tsv
+          az containerapp update -g "$RESOURCE_GROUP" -n shinrikai-web --image "${{ steps.acr.outputs.server }}/shinrikai-web:$tag" --query properties.latestRevisionName -o tsv

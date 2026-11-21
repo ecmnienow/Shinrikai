@@ -150,6 +150,11 @@ O Firebird do container também aparece no Windows em `localhost:3055` (IBExpert
 colidir com o serviço local da 3050. `docker compose down -v` apaga o volume e, com ele, o banco. O job
 `docker` do CI monta as duas imagens e valida o `compose.yaml` a cada push.
 
+### Azure (Container Apps + VM do Firebird)
+
+A publicação no Azure (Container Apps, VM do Firebird, VNet e deploy pelo GitHub Actions) fica em
+[`infra/`](infra/README.md), separada do resto do sistema.
+
 ### Banco novo (vazio)
 
 `database/` cria o banco no Firebird local com o mesmo esquema do original (16 tabelas, 15

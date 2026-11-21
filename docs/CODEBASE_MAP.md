@@ -87,7 +87,9 @@ database/                       schema.sql, seed.sql e scripts PowerShell (criar
 database/docker/                init-shinrikai.sh: schema + seed no Firebird do container (só na criação)
 */Dockerfile                    imagens da API e da interface (contexto: raiz do repositório)
 compose.yaml, .env.example      Firebird 5.0.4 + API + interface; segredos no .env (ignorado pelo git)
+infra/                          Azure: Bicep (Container Apps, VM do Firebird, VNet, identidade OIDC do GitHub), cloud-init, deploy.ps1
 .github/workflows/build.yml     CI: build, testes, Sonar (não bloqueante), build do ClientApp, imagens Docker
+.github/workflows/deploy.yml    depois do Build no master: imagens no ACR e atualização dos Container Apps
 .claude/launch.json             servidores de preview: API :5080, Vite :5173 e host da interface :5090
 ```
 
@@ -452,4 +454,11 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
     (porta 8090 no host, `WEB_PORT` no `.env`); o Firebird aparece em `localhost:3055`.
   - As imagens escutam na 8080 via `Kestrel__Endpoints__Http__Url`, porque o `appsettings.json` usa `localhost`.
   - O `init-shinrikai.sh` só roda com o volume vazio. Mudou o schema, então `docker compose down -v`.
+- **Azure** (detalhes em `infra/README.md`):
+  - Infra em `infra/*.bicep`, implantada pelo `infra/deploy.ps1`. Os segredos ficam em `infra/.azure.env`
+    (ignorado pelo git) e viram segredos dos Container Apps e o `firebird.env` da VM.
+  - A interface chama a API em `http://shinrikai-api` (ingress interno). A API chama o Firebird em
+    `10.10.2.4:3050` (IP fixo da VM).
+  - O cloud-init da VM roda uma vez só: mudar `schema.sql` ou as senhas não alcança uma VM já criada.
+  - O `deploy.yml` só troca as imagens. Para mudar ambiente, segredos ou escala, use o `deploy.ps1`.
 - **CI:** `.github/workflows/build.yml`. O Sonar é não bloqueante e cada comando fica no seu step.
