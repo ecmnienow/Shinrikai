@@ -47,6 +47,10 @@ CREATE TABLE USERS (
   CONSTRAINT UQ_USERS_LOGIN UNIQUE (USR_LOGIN)
 );
 
+/* Login sem diferenciar maiúsculas/minúsculas: impede "Ana" e "ana" e atende ao
+   WHERE UPPER(USR_LOGIN) = UPPER(@LGN) do UserRepository. */
+CREATE UNIQUE INDEX UQ_USERS_LOGIN_UPPER ON USERS COMPUTED BY (UPPER(USR_LOGIN));
+
 /* Janelas de "Ajuda" de cada tela (HomeController.GetNotification). */
 CREATE TABLE NOTIFICATIONS (
   NTF_ID       INTEGER NOT NULL,

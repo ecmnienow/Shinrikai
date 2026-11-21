@@ -28,9 +28,9 @@ $Path = (Resolve-Path $Path).Path
 
 $sql = @"
 SET HEADING OFF;
-UPDATE USERS SET USR_TYPE = $type WHERE USR_LOGIN = '$safeLogin';
+UPDATE USERS SET USR_TYPE = $type WHERE UPPER(USR_LOGIN) = UPPER('$safeLogin');
 COMMIT;
-SELECT COUNT(*) FROM USERS WHERE USR_LOGIN = '$safeLogin';
+SELECT COUNT(*) FROM USERS WHERE UPPER(USR_LOGIN) = UPPER('$safeLogin');
 "@
 $script = Join-Path ([IO.Path]::GetTempPath()) "shinrikai-promote-$PID.sql"
 [IO.File]::WriteAllText($script, $sql, (New-Object Text.UTF8Encoding($false)))

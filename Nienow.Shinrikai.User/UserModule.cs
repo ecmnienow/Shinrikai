@@ -89,14 +89,20 @@ namespace Nienow.Shinrikai.User
             FROM USERS
             """;
 
+        /// <summary>
+        /// O login é comparado sem diferenciar maiúsculas/minúsculas (UPPER nos dois lados); o usuário
+        /// retornado traz o login como está gravado, que é o que vai para o token.
+        /// </summary>
+        private const string WhereLogin = " WHERE UPPER(USR_LOGIN) = UPPER(@LGN)";
+
         public Task<TUser?> GetByLoginAsync(string login, CancellationToken ct = default) =>
-            db.QuerySingleOrDefaultAsync(SelectUser + " WHERE USR_LOGIN = @LGN", Map, ct, ("@LGN", login));
+            db.QuerySingleOrDefaultAsync(SelectUser + WhereLogin, Map, ct, ("@LGN", login));
 
         public Task<TUser?> GetByEmailAsync(string email, CancellationToken ct = default) =>
             db.QuerySingleOrDefaultAsync(SelectUser + " WHERE USR_EMAIL = @EML", Map, ct, ("@EML", email));
 
         public async Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default) =>
-            await db.ScalarAsync("SELECT USR_PASS FROM USERS WHERE USR_LOGIN = @LGN", ct, ("@LGN", login)) as string;
+            await db.ScalarAsync("SELECT USR_PASS FROM USERS" + WhereLogin, ct, ("@LGN", login)) as string;
 
         public Task SignUpAsync(TUser user, CancellationToken ct = default) =>
             db.ExecuteAsync(
