@@ -1,9 +1,55 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, errorMessage, isNotFound, post } from '../../api/client'
-import type { Jlpt, Kanji, Response } from '../../api/types'
+import type { Jlpt, Kanji, KanjiReadingReport, Response } from '../../api/types'
 import { FileField, LevelRadios, PageTitle } from '../../components/common'
 import { useDialogs } from '../../components/Dialogs'
+
+function ReadingLevels({ report }: { report: KanjiReadingReport }) {
+  const special = report.unaligned.filter((u) => u.missingKanji.length === 0)
+  const missing = report.unaligned.filter((u) => u.missingKanji.length > 0)
+  return (
+    <section className="card stack">
+      <h2>Leituras exigidas por nível</h2>
+      <p className="muted">
+        Na Leitura de kanjis, o aluno escreve só as leituras usadas pelas palavras de treino do nível escolhido
+        (até 3). As outras continuam valendo como resposta certa.
+      </p>
+      <table className="data-table">
+        <thead>
+          <tr><th>Leitura</th><th>Exigida a partir de</th><th>Palavras de treino</th></tr>
+        </thead>
+        <tbody>
+          {report.readings.map((r) => (
+            <tr key={r.reading}>
+              <td lang="ja">{r.reading} <span className="muted">{r.romaji}</span></td>
+              <td>{r.requiredFrom ?? <span className="muted">só no cadastro</span>}</td>
+              <td lang="ja">
+                {r.words.length === 0
+                  ? <span className="muted">nenhuma</span>
+                  : r.words.map((w) => `${w.word} (${w.kana}, ${w.level})`).join(' · ')}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {special.length > 0 && (
+        <p>
+          <strong>Palavras que não se dividem nas leituras cadastradas:</strong>{' '}
+          <span lang="ja">{special.map((u) => `${u.word} (${u.kana})`).join(' · ')}</span>
+          <br />
+          <span className="muted">Leitura especial (como 今日) ou leitura faltando no cadastro: não exigem nenhuma leitura.</span>
+        </p>
+      )}
+      {missing.length > 0 && (
+        <p>
+          <strong>Palavras com kanji não cadastrado:</strong>{' '}
+          <span lang="ja">{missing.map((u) => `${u.word} (${u.missingKanji.join(', ')})`).join(' · ')}</span>
+        </p>
+      )}
+    </section>
+  )
+}
 
 /** Port de Views/Kanjis/Register.cshtml: kanji (com busca), kana, romaji, nível, informações e imagem. */
 export function KanjiRegisterPage() {
@@ -17,6 +63,7 @@ export function KanjiRegisterPage() {
   const [info, setInfo] = useState('')
   const [image, setImage] = useState<File | null>(null)
   const [hasImage, setHasImage] = useState(false)
+  const [report, setReport] = useState<KanjiReadingReport | null>(null)
   const [invalid, setInvalid] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
 
@@ -29,6 +76,7 @@ export function KanjiRegisterPage() {
     setInfo('')
     setImage(null)
     setHasImage(false)
+    setReport(null)
     setInvalid(new Set())
   }
 
@@ -46,6 +94,7 @@ export function KanjiRegisterPage() {
       setLevel((k.jlpt as Jlpt | null) ?? 'None')
       setHasImage(k.hasImage)
       setInvalid(new Set())
+      api<KanjiReadingReport>(`/kanjis/readings?letter=${encodeURIComponent(letter.trim())}`).then(setReport, () => setReport(null))
     } catch (e) {
       if (isNotFound(e)) dialogs.alert('Kanji não encontrado!')
       else dialogs.error(errorMessage(e, 'Falha na busca.'))
@@ -109,6 +158,7 @@ export function KanjiRegisterPage() {
           <button type="button" onClick={() => navigate('/')}>Cancelar</button>
         </div>
       </div>
+      {report && <ReadingLevels report={report} />}
     </main>
   )
 }

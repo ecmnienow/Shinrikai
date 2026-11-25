@@ -177,7 +177,7 @@ que são o que os testes cobrem.
 | User | `UserModule.cs` (2664) | USERS, NOTIFICATIONS, NOT_STATUS | `Roles.FromUserType`: A=Administrator, T=Teacher, resto=Student; `ContentEditors = "Administrator,Teacher"`; senha com hash PBKDF2 (`PasswordHasher.cs`), texto puro legado aceito e convertido no login; cadastro nunca define papel; `MinPasswordLength = 5` |
 | Vocabulary | `VocabularyRepository.cs` (2883), `VocabularyService.cs` (1884), `Model/TWord.cs` (1692) | VOCABULARY, SUBJECTS, VOC_MONITOR | palavra com até 3 "formas" (kanji, assunto, traduções separadas por vírgula, imagem, áudio); sessão inteira em páginas de 10 vai ao cliente; correção por ID no servidor, comparação exata |
 | Transcription | `TranscriptionModule.cs` (2445) | VOCABULARY, TRL_MONITOR | só palavras com kanji no assunto; limiar 0; `SearchKanjiWordAsync` (até 10) alimenta o editor de textos |
-| Kanji | `KanjiModule.cs` (3821) | KANJI, KAN_MONITOR | `CheckReading` soma bits 1/2/4, leitura repetida não conta; até 3 campos; níveis cumulativos (N1 = todos, inclusive sem nível); `Normalize` grava em maiúsculas |
+| Kanji | `KanjiModule.cs`, `KanjiReadingLevels.cs` | KANJI, KAN_MONITOR, VOCABULARY (leitura) | `CheckReading` soma bits 1/2/4, leitura repetida não conta; níveis cumulativos (N1 = todos, inclusive sem nível); `Normalize` grava em maiúsculas. Extensão: campos = leituras usadas pelas palavras de treino do nível (`ReadingRequirements`, até 3, mínimo 1); qualquer leitura cadastrada é aceita |
 | Grammar | `GrammarModule.cs` (3066) | GRAMMAR, GRA_MONITOR, EXERCISES (leitura) | `GRM_REQUISITES` = `"001;002;010"`; nível nulo = N5; mapa agrupado por nível com desbloqueados primeiro |
 | Text | `TextModule.cs` (2293) | TEXTS, TEX_MONITOR, TRL_MONITOR, EXERCISES (leitura) | `GetForReadingAsync` converte a notação antiga e esconde furigana conforme `TRL_MONITOR`; clique na palavra → `RegisterLackOfKnowledge` |
 | Exercises | `ExercisesModule.cs` (2821) | EXERCISES, EXE_MONITOR | `ExerciseQuestion` **não** leva a resposta certa; lista geral exclui exercícios de texto e pega 10; mensagem de erro cita o texto da opção |
@@ -205,7 +205,7 @@ singletons. Repositórios e serviços são scoped. Enums trafegam como string (`
 | `auth` | `POST login`, `POST signup` (anônimos); `GET me`; `POST logout` (só registra a interação) |
 | `vocabulary` | `GET subjects`; `POST sessions`; `POST check` (1–10 respostas); `POST interactions`; `GET words/{id}/{image\|audio}/{1-3}`; Ed: `GET words/{id}`, `GET words?kana=`, `POST words` (multipart) |
 | `transcription` | `GET subjects`; `POST sessions`; `POST check`; `POST interactions`; `GET kanji-words?term=` |
-| `kanjis` | `POST sessions`; `POST check`; `POST interactions`; `GET {id}/image`; Ed: `GET ?letter=`, `POST /` (multipart) |
+| `kanjis` | `POST sessions`; `POST check` (com `level`, ordena as leituras exigidas); `POST interactions`; `GET {id}/image`; Ed: `GET ?letter=`, `GET readings?letter=`, `POST /` (multipart) |
 | `grammar` | `GET /` (mapa); `GET {id}`; `GET {id}/requisites`; `POST {id}/knowledge`; Ed: `GET all?jlpt=`, `GET {id}/edit`, `POST /` |
 | `texts` | `GET /`; `GET {id}` (furigana adaptada); `POST {id}/knowledge`; `POST words/{wordId}/lack-of-knowledge`; Ed: `GET {id}/edit`, `POST /` |
 | `exercises` | `GET ?grammarId=&textId=` (ids); `GET {id}`; `POST {id}/check`; Ed: `GET edit?id=&grammarId=&textId=`, `POST /` |

@@ -16,7 +16,7 @@ namespace Nienow.Shinrikai.Api.Controllers
 {
     public sealed record GenerateKanjiRequest(string Level, bool Mistakes);
 
-    public sealed record CheckKanjiRequest(IReadOnlyList<KanjiAnswer> Answers);
+    public sealed record CheckKanjiRequest(IReadOnlyList<KanjiAnswer> Answers, string? Level = null);
 
     public sealed class KanjiForm
     {
@@ -56,7 +56,7 @@ namespace Nienow.Shinrikai.Api.Controllers
             if (!IsValidPage(request.Answers?.Count ?? 0))
                 return PageSizeError();
 
-            var results = await kanjis.CheckAnswersAsync(User.UserId(), request.Answers!, ct);
+            var results = await kanjis.CheckAnswersAsync(User.UserId(), request.Answers!, request.Level, ct);
             await Log("Verificar respostas", results.Count(r => !r.Wrong) + " Acertos", ct);
             return Ok(results);
         }
@@ -74,6 +74,15 @@ namespace Nienow.Shinrikai.Api.Controllers
             if (string.IsNullOrWhiteSpace(letter))
                 return BadRequest();
             return await kanjis.GetByLetterAsync(letter, ct) is { } kanji ? kanji : NotFound(Core.Response.Fail("Kanji não encontrado!"));
+        }
+
+        [HttpGet("readings")]
+        [Authorize(Roles = Roles.ContentEditors)]
+        public async Task<ActionResult<KanjiReadingReport>> Readings([FromQuery] string letter, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(letter))
+                return BadRequest();
+            return await kanjis.GetReadingReportAsync(letter, ct) is { } report ? report : NotFound(Core.Response.Fail("Kanji não encontrado!"));
         }
 
         [HttpPost]

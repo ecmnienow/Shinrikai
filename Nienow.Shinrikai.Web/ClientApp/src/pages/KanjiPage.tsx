@@ -4,9 +4,20 @@ import { PageTitle } from '../components/common'
 import { DrillForm, useDrill } from '../components/Drill'
 import { HELP, HelpButton } from '../components/Help'
 
+function Expected({ result }: { result: KanjiResult }) {
+  const others = result.expected.filter((e) => !result.required.includes(e))
+  if (result.required.length === 0) return <span className="expected" lang="ja">{result.expected.join(', ')}</span>
+  return (
+    <span className="expected" lang="ja">
+      <strong>{result.required.join(', ')}</strong>
+      {others.length > 0 && <span className="muted"> (também valem: {others.join(', ')})</span>}
+    </span>
+  )
+}
+
 /**
  * Port de Views/Kanjis/Index.cshtml (Leitura de Kanjis): nível N5…N1 (cumulativo), páginas de 10,
- * uma caixa por leitura (até 3). O kanji só conta como acerto com todas as leituras certas.
+ * uma caixa por leitura exigida no nível (até 3). O kanji só conta como acerto com todas as leituras certas.
  */
 export function KanjiPage() {
   // O original já carregava o N5 ao abrir a tela.
@@ -19,6 +30,7 @@ export function KanjiPage() {
     idOf: (k) => k.kanjiId,
     resultIdOf: (r) => r.kanjiId,
     checkBody: (page, answers) => ({
+      level,
       answers: page.map((k) => ({
         kanjiId: k.kanjiId,
         kanji: k.kanji,
@@ -66,7 +78,7 @@ export function KanjiPage() {
                   />
                 ))}
               </div>
-              {r?.wrong && <span className="expected" lang="ja">{r.expected.join(', ')}</span>}
+              {r?.wrong && <Expected result={r} />}
             </div>
           )
         })}

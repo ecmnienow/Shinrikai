@@ -62,7 +62,7 @@ namespace Nienow.Shinrikai.Kanji
     public record KanjiAnswer(int KanjiId, string Kanji, IReadOnlyList<string?> Answers);
 
     /// <summary>Resultado por kanji; <see cref="WrongInputs"/> indica cada campo errado.</summary>
-    public record KanjiResult(int KanjiId, string Kanji, IReadOnlyList<string?> Answers, IReadOnlyList<bool> WrongInputs, bool Wrong, string[] Expected);
+    public record KanjiResult(int KanjiId, string Kanji, IReadOnlyList<string?> Answers, IReadOnlyList<bool> WrongInputs, bool Wrong, string[] Expected, string[] Required);
 
     public static class KanjiLevels
     {
@@ -88,6 +88,7 @@ namespace Nienow.Shinrikai.Kanji
         Task<IReadOnlyList<TKanji>> GetByIdsAsync(IReadOnlyList<int> ids, CancellationToken ct = default);
         Task<TKanji?> GetByLetterAsync(string letter, CancellationToken ct = default);
         Task<byte[]?> GetImageAsync(int id, CancellationToken ct = default);
+        Task<IReadOnlyList<VocabularyForm>> GetVocabularyFormsAsync(CancellationToken ct = default);
         Task AddAsync(TKanji kanji, CancellationToken ct = default);
         Task UpdateAsync(TKanji kanji, CancellationToken ct = default);
     }
@@ -133,6 +134,23 @@ namespace Nienow.Shinrikai.Kanji
 
         public async Task<byte[]?> GetImageAsync(int id, CancellationToken ct = default) =>
             await db.ScalarAsync("SELECT KNJ_IMAGE FROM KANJI WHERE KNJ_ID = @ID", ct, ("@ID", id)) as byte[];
+
+        public async Task<IReadOnlyList<VocabularyForm>> GetVocabularyFormsAsync(CancellationToken ct = default)
+        {
+            var rows = await db.QueryAsync(
+                """
+                SELECT VCB_ID, VCB_KANA, VCB_KANJI_1, VCB_KANJI_2, VCB_KANJI_3
+                FROM VOCABULARY
+                WHERE VCB_KANJI_1 IS NOT NULL OR VCB_KANJI_2 IS NOT NULL OR VCB_KANJI_3 IS NOT NULL
+                """,
+                r => (Id: r.GetInt("VCB_ID"), Kana: r.GetNullableString("VCB_KANA"),
+                      Forms: new[] { r.GetNullableString("VCB_KANJI_1"), r.GetNullableString("VCB_KANJI_2"), r.GetNullableString("VCB_KANJI_3") }),
+                ct);
+            return rows
+                .Where(r => !string.IsNullOrWhiteSpace(r.Kana))
+                .SelectMany(r => r.Forms.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct().Select(f => new VocabularyForm(r.Id, r.Kana!.Trim(), f!.Trim())))
+                .ToList();
+        }
 
         public Task AddAsync(TKanji kanji, CancellationToken ct = default) =>
             db.ExecuteAsync(
@@ -199,42 +217,61 @@ namespace Nienow.Shinrikai.Kanji
                 ? await repository.GetMistakesAsync(userId, levels, ct)
                 : await repository.GetKanjisAsync(levels, ct);
 
-            return BuildSession(JlptLevel.Normalize(level)!, kanjis, mistakes, rng ?? Random.Shared);
+            var normalized = JlptLevel.Normalize(level)!;
+            var requirements = await GetRequirementsAsync(ct);
+            return BuildSession(normalized, kanjis, mistakes, rng ?? Random.Shared, k => requirements.Inputs(k, normalized));
         }
 
-        public static KanjiSession BuildSession(string level, IEnumerable<TKanji> kanjis, bool mistakes, Random rng)
+        public async Task<ReadingRequirements> GetRequirementsAsync(CancellationToken ct = default) =>
+            ReadingRequirements.Build(await repository.GetKanjisAsync(null, ct), await repository.GetVocabularyFormsAsync(ct));
+
+        /// <summary>Como no original: um campo por leitura cadastrada, até 3.</summary>
+        public static KanjiSession BuildSession(string level, IEnumerable<TKanji> kanjis, bool mistakes, Random rng) =>
+            BuildSession(level, kanjis, mistakes, rng, k => Math.Min(k.KanaReadingForms.Length, MaxInputs));
+
+        public static KanjiSession BuildSession(string level, IEnumerable<TKanji> kanjis, bool mistakes, Random rng, Func<TKanji, int> inputs)
         {
             var items = kanjis
                 .Where(k => !string.IsNullOrEmpty(k.KanjiLetter))
-                .Select(k => new KanjiItem(k.ID, k.KanjiLetter!, Math.Min(k.KanaReadingForms.Length, MaxInputs)))
+                .Select(k => new KanjiItem(k.ID, k.KanjiLetter!, inputs(k)))
                 .ToList();
             items.ShuffleList(rng);
             return new KanjiSession(level, mistakes, items.Paginate());
         }
 
-        /// <summary>KanjiManager.CheckAnswers: o kanji está certo só se todas as leituras pedidas estão certas.</summary>
-        public static KanjiResult Check(TKanji kanji, KanjiAnswer answer)
+        /// <summary>
+        /// KanjiManager.CheckAnswers: o kanji está certo só se todas as leituras pedidas estão certas.
+        /// <paramref name="required"/> só ordena as leituras mostradas no erro.
+        /// </summary>
+        public static KanjiResult Check(TKanji kanji, KanjiAnswer answer, IReadOnlyList<string>? required = null)
         {
             var answers = answer.Answers.Take(MaxInputs).ToArray();
             var bits = kanji.CheckReading(answers);
             var wrongInputs = answers.Select((_, i) => (bits & (1 << i)) == 0).ToArray();
             var wrong = wrongInputs.Length == 0 || wrongInputs.Any(w => w);
-            return new KanjiResult(kanji.ID, answer.Kanji, answers, wrongInputs, wrong, wrong ? kanji.KanaReadingForms : []);
+            if (!wrong)
+                return new KanjiResult(kanji.ID, answer.Kanji, answers, wrongInputs, false, [], []);
+
+            var first = (required ?? []).ToArray();
+            var expected = first.Concat(kanji.KanaReadingForms.Where(r => !first.Contains(r))).ToArray();
+            return new KanjiResult(kanji.ID, answer.Kanji, answers, wrongInputs, true, expected, first);
         }
 
-        public async Task<IReadOnlyList<KanjiResult>> CheckAnswersAsync(int userId, IReadOnlyList<KanjiAnswer> answers, CancellationToken ct = default)
+        public async Task<IReadOnlyList<KanjiResult>> CheckAnswersAsync(int userId, IReadOnlyList<KanjiAnswer> answers, string? level = null, CancellationToken ct = default)
         {
             var kanjis = (await repository.GetByIdsAsync(answers.Select(a => a.KanjiId).ToList(), ct)).ToDictionary(k => k.ID);
+            var normalized = JlptLevel.Normalize(level);
+            var requirements = normalized is not null && KanjiLevels.All.Contains(normalized) ? await GetRequirementsAsync(ct) : null;
             var results = new List<KanjiResult>(answers.Count);
             foreach (var answer in answers)
             {
                 if (!kanjis.TryGetValue(answer.KanjiId, out var kanji))
                 {
-                    results.Add(new KanjiResult(answer.KanjiId, answer.Kanji, answer.Answers, answer.Answers.Select(_ => true).ToArray(), true, []));
+                    results.Add(new KanjiResult(answer.KanjiId, answer.Kanji, answer.Answers, answer.Answers.Select(_ => true).ToArray(), true, [], []));
                     continue;
                 }
 
-                var result = Check(kanji, answer);
+                var result = Check(kanji, answer, requirements?.Required(kanji, normalized!));
                 await monitors.UpdateAsync(MonitorTables.Kanji, userId, kanji.ID, m => FragmentVariation.ApplyKanji(m, !result.Wrong, Now), ct);
                 results.Add(result);
             }
@@ -244,6 +281,13 @@ namespace Nienow.Shinrikai.Kanji
         public Task<TKanji?> GetByLetterAsync(string letter, CancellationToken ct = default) => repository.GetByLetterAsync(letter.Trim(), ct);
 
         public Task<byte[]?> GetImageAsync(int id, CancellationToken ct = default) => repository.GetImageAsync(id, ct);
+
+        public async Task<KanjiReadingReport?> GetReadingReportAsync(string letter, CancellationToken ct = default)
+        {
+            if (await repository.GetByLetterAsync(letter.Trim(), ct) is not { } kanji)
+                return null;
+            return (await GetRequirementsAsync(ct)).Report(kanji);
+        }
 
         /// <summary>Um único caractere visível (o original testava Length == 1, o que recusava kanjis fora do BMP).</summary>
         public static bool IsSingleCharacter(string? text) =>

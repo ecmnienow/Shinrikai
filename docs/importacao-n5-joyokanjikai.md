@@ -3,7 +3,7 @@
 Fonte: <https://www.joyokanjikai.com/learning-japanese/complete-list-of-all-jlpt-n5-kanji-with-readings-meanings-examples/> (103 kanjis, 2 exemplos cada; 194 palavras sem repetição).
 Banco comparado: `database/data/SHINRIKAI_LEGADO.FDB` (357 kanjis, 1382 palavras, 37 assuntos).
 
-**Aplicado em 2026-11-22** (itens 1 a 5 e as correções do item 7) no banco do Azure (VM `vm-shinrikai-db`), no banco local `SHINRIKAI_LEGADO.FDB` e no banco do Docker (`shinrikai.fdb`, volume `shinrikai_firebird-data`), pelo script [database/import/kanjis-n5-joyokanjikai.sql](../database/import/kanjis-n5-joyokanjikai.sql). Resultado: 1425 palavras, 39 assuntos, 103 kanjis N5. Backups de antes (gbak) em `database/data/backup-2026-11-22-antes-n5/` (local e Docker) e em `/srv/firebird/backup-2026-11-22-antes-n5.fbk` na VM do Azure.
+**Aplicado em 2026-11-22** (itens 1 a 5 e as correções do item 7; o item 8 só no local e no Docker) no banco do Azure (VM `vm-shinrikai-db`), no banco local `SHINRIKAI_LEGADO.FDB` e no banco do Docker (`shinrikai.fdb`, volume `shinrikai_firebird-data`), pelo script [database/import/kanjis-n5-joyokanjikai.sql](../database/import/kanjis-n5-joyokanjikai.sql). Resultado: 1425 palavras, 39 assuntos, 103 kanjis N5. Backups de antes (gbak) em `database/data/backup-2026-11-22-antes-n5/` (local e Docker) e em `/srv/firebird/backup-2026-11-22-antes-n5.fbk` na VM do Azure.
 
 Convenções seguidas (as do cadastro do professor): um registro por kana, com homônimos e outros sentidos como forma 2/3; kana em hiragana (katakana só em estrangeirismo); romaji minúsculo com `ou`/`uu`; tradução em português, alternativas separadas por vírgula **sem espaço**; nível JLPT gravado como `N5`.
 
@@ -233,7 +233,7 @@ Casos de atenção:
 - **あし (#686)**: 足 vale para as duas formas (pé e perna).
 - **はなみ (#345)**: a tradução cadastrada é "piquenique"; mantive, só ganha 花見.
 
-## 6. Leituras de kanji (não aplicado)
+## 6. Leituras de kanji (só as do item 8 foram aplicadas)
 
 A página tem leituras que o banco não tem. O professor cadastrou só as leituras usadas no nível; acrescentar leitura muda a sessão (até 3 campos por kanji). Só recomendo as três usadas por palavras do sistema:
 
@@ -266,3 +266,44 @@ A página tem leituras que o banco não tem. O professor cadastrou só as leitur
 - #939 げんき: tradução `bem,saldável` → `bem,saudável` (quem digitava certo levava erro).
 - ひゃく estava cadastrada duas vezes (#470 e #618, idênticas e sem monitor de aluno): #618 excluída.
 - 車: nível `n5` → `N5` (feito no item 2).
+
+## 8. Leituras exigidas por nível e leituras que faltavam (aplicado no local e no Docker)
+
+**Extensão ao sistema original.** Na Leitura de kanjis, o original pedia um campo por leitura cadastrada (até 3). Agora o sistema deduz, a partir das palavras de treino, qual leitura de cada kanji cada palavra usa (日曜日 = にち + よう + び, com sonorização e っ no fim). Uma leitura é exigida no nível L quando alguma palavra de nível ≤ L a usa. O nível da palavra é o mais alto entre os seus kanjis; kanji sem nível conta como N1.
+
+- A sessão pede um campo por leitura exigida no nível escolhido (até 3). Sem leitura deduzida, pede 1 campo.
+- A correção continua a do original (`TKanji.CheckReading`): qualquer leitura cadastrada vale.
+- No erro, as leituras exigidas aparecem primeiro, em destaque, e as demais como "também valem".
+- No cadastro de kanjis, o professor vê a partir de que nível cada leitura é exigida, as palavras que a justificam e as palavras que não se dividem.
+- Código: `Nienow.Shinrikai.Kanji/KanjiReadingLevels.cs` (`ReadingRequirements`), testes em `tests/Nienow.Shinrikai.Tests/KanjiReadingLevelsTests.cs`. Rota nova: `GET /api/kanjis/readings?letter=` (professor).
+
+Campos pedidos por sessão (banco local, depois das correções abaixo):
+
+| Nível | Kanjis | Original | Com a regra |
+|---|---|---|---|
+| N5 | 103 | 241 | 149 |
+| N4, N3, N2 | 225 | 398 | 276 |
+| N1 | 357 | 675 | 419 |
+
+**Leituras que faltavam** ([database/import/leituras-faltantes-n5.sql](../database/import/leituras-faltantes-n5.sql)). Das 49 palavras com kanji que não se dividiam, 13 eram por falta de leitura no cadastro:
+
+| Kanji | Antes | Acrescentado | Palavras |
+|---|---|---|---|
+| 後 | のち,うし,あと | ご (go) | 午後 |
+| 日 | にち,ひ,か,たち | じつ, に (jitsu, ni) | 休日; 日本, 日本語, 日本人, 日本国 |
+| 上 | うえ,じょう | あ (a) | 上げる |
+| 下 | した,げ | さ (sa) | 下げる |
+| 四 | よん,よ,し | よっ (yo~tsu, como 六 むっ e 八 やっ) | 四日, 四つ |
+| 六 | ろく,む,むっ,ろっ | むい (mui) | 六日 |
+| 八 | はち,やっ,はっ | よう (you) | 八日 |
+
+Também: #1035 いりぐち passa de 入口 (posto pela importação) para 入り口, que se divide em い + り + ぐち.
+
+Ficam sem divisão, de propósito, 36 palavras:
+
+- **Leitura especial (8):** 大人, 時計, 部屋, 上手, 一人, 二人, 明日, 今日. Não exigem leitura de nenhum kanji.
+- **Kanji não cadastrado (28 palavras, 27 kanjis):** 彼, 次, 机, 供, 私, 緒, 葉, 達, 有, 富, 士, 港, 俳, 優, 腕, 否, 定, 的, 路, 珍, 昔, 漫, 筆, 側, 河, 鼻, 性. Cadastrar esses kanjis (leituras, significado, exemplos) é trabalho de conteúdo à parte.
+
+Aplicado em 2026-11-22 no banco local e no Docker; backups de antes em `database/data/backup-2026-11-22-antes-leituras/`. **Azure: pendente.**
+
+Visto de passagem: #408 じょうず tem romaji `jousu` (deveria ser `jouzu`); não corrigido.

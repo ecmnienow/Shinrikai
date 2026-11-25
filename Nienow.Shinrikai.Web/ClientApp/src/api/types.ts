@@ -99,6 +99,32 @@ export interface KanjiResult {
   wrongInputs: boolean[]
   wrong: boolean
   expected: string[]
+  required: string[]
+}
+
+export interface ReadingWord {
+  word: string
+  kana: string
+  level: string
+}
+
+export interface ReadingLevelInfo {
+  reading: string
+  romaji: string | null
+  requiredFrom: string | null
+  words: ReadingWord[]
+}
+
+export interface UnalignedWord {
+  word: string
+  kana: string
+  missingKanji: string[]
+}
+
+export interface KanjiReadingReport {
+  kanji: string
+  readings: ReadingLevelInfo[]
+  unaligned: UnalignedWord[]
 }
 
 export interface Kanji {
