@@ -174,7 +174,7 @@ que são o que os testes cobrem.
 
 | Módulo | Arquivo principal | Tabelas | Pontos-chave |
 |---|---|---|---|
-| User | `UserModule.cs` (2664) | USERS, NOTIFICATIONS, NOT_STATUS | `Roles.FromUserType`: A=Administrator, T=Teacher, resto=Student; `ContentEditors = "Administrator,Teacher"`; senha em texto puro comparada com `FixedTimeEquals`; cadastro nunca define papel; `MinPasswordLength = 5` |
+| User | `UserModule.cs` (2664) | USERS, NOTIFICATIONS, NOT_STATUS | `Roles.FromUserType`: A=Administrator, T=Teacher, resto=Student; `ContentEditors = "Administrator,Teacher"`; senha com hash PBKDF2 (`PasswordHasher.cs`), texto puro legado aceito e convertido no login; cadastro nunca define papel; `MinPasswordLength = 5` |
 | Vocabulary | `VocabularyRepository.cs` (2883), `VocabularyService.cs` (1884), `Model/TWord.cs` (1692) | VOCABULARY, SUBJECTS, VOC_MONITOR | palavra com até 3 "formas" (kanji, assunto, traduções separadas por vírgula, imagem, áudio); sessão inteira em páginas de 10 vai ao cliente; correção por ID no servidor, comparação exata |
 | Transcription | `TranscriptionModule.cs` (2445) | VOCABULARY, TRL_MONITOR | só palavras com kanji no assunto; limiar 0; `SearchKanjiWordAsync` (até 10) alimenta o editor de textos |
 | Kanji | `KanjiModule.cs` (3821) | KANJI, KAN_MONITOR | `CheckReading` soma bits 1/2/4, leitura repetida não conta; até 3 campos; níveis cumulativos (N1 = todos, inclusive sem nível); `Normalize` grava em maiúsculas |
@@ -190,6 +190,7 @@ que são o que os testes cobrem.
 |---|---|---|
 | `Program.cs` | Kestrel (endpoints da config, 20 MB de corpo), proxy reverso opcional, DI, JWT, Swagger (só Development). Não serve o SPA | ~1.950 |
 | `ApiExceptionHandler.cs` | `DatabaseUnavailableException` → 503 com explicação; demais → 500 (detalhe só em Development) | 563 |
+| `Auth/PasswordMigration.cs` | `BackgroundService` que, ao iniciar, chama `UserService.HashPlainPasswordsAsync` (até 5 tentativas) | — |
 | `Auth/JwtTokenService.cs` | `JwtOptions`, emissão HMAC-SHA256 (480 min), claims `jlpt` e `shinrikai_session`, `User.UserId()/Jlpt()/SessionId()` | 874 |
 | `Controllers/*.cs` | 9 controllers, 45 rotas. Base `ShinrikaiController` (`[Authorize]`, `Log` em INTERACTIONS com o nome da tela, nível do usuário, `Result`); `StudyController` acrescenta `POST interactions` (vocabulário, transcrição, kanjis) | ~7.800 |
 | `appsettings*.json`, `Properties/launchSettings.json` | Kestrel `http://localhost:5080`, `ReverseProxy:Enabled`, `Jwt:*`, connection string (perfil `Shinrikai`) | ~300 |
@@ -276,7 +277,7 @@ sequenceDiagram
     W->>A: POST /api/auth/login {username, password}
     A->>U: LoginAsync
     U->>DB: SELECT USR_PASS (parametrizado)
-    U-->>A: TUser (comparação FixedTimeEquals)
+    U-->>A: TUser (PBKDF2; texto puro legado vira hash)
     A->>A: JwtTokenService.Issue (role, jlpt, shinrikai_session)
     A->>DB: INSERT INTERACTIONS
     A-->>W: {token, expiresAt, user}
@@ -389,7 +390,10 @@ Depois, `GET /{id}` devolve a pergunta sem a resposta, e o front embaralha as op
 6. **`GET /api/grammar/{id}` e `GET /api/texts/{id}` não checam bloqueio no servidor.** O bloqueio é feito
    só pelo mapa e pela UI; um aluno que chame o endpoint direto recebe o conteúdo.
 7. **Kanji N1 = sem filtro**, inclusive kanjis sem nível; os demais níveis são cumulativos.
-8. **Senhas em texto puro** (compatibilidade com a base antiga). Hash exige aumentar `USERS.USR_PASS`.
+8. **Senhas com hash PBKDF2** (`PasswordHasher`, formato `PBKDF2$SHA256$<iterações>$<sal>$<hash>`).
+   `Auth/PasswordMigration.cs` roda ao iniciar a API: aumenta `USR_PASS` para 100 e converte o texto puro
+   da base antiga (não tem volta). Script que gravar senha direto no banco deve gravar o hash, ou a
+   próxima subida da API converte.
 9. **Segredos de desenvolvimento versionados:**
    - `appsettings*.json` tem uma chave JWT de desenvolvimento.
    - O `launchSettings.json` tem a connection string do banco local com a senha padrão do Firebird.

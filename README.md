@@ -271,8 +271,10 @@ Correções de bugs do original (o comportamento pretendido foi mantido):
 - **Sem estado de sessão.** Os *Managers* viviam na `Session` do MVC. Agora a API devolve todas as
   páginas (10 itens, embaralhadas) e corrige por ID, no servidor.
 - **SQL injection** em praticamente todas as consultas (inclusive o login). Tudo parametrizado.
-- **Senhas em texto puro** na base. ⚠️ Mantido por compatibilidade; migrar para hash exige
-  aumentar `USERS.USR_PASS` (pendente).
+- **Senhas em texto puro** na base. Agora são guardadas com hash PBKDF2-HMAC-SHA256 (600 mil iterações,
+  sal por senha). Ao iniciar, a API aumenta `USERS.USR_PASS` para `VARCHAR(100)` se preciso (a base original
+  usava 20) e converte as senhas antigas; o login também aceita uma senha ainda em texto puro e já a converte.
+  A conversão não tem volta: faça backup (gbak) antes de apontar a API para uma base antiga.
 - **Cadastro de usuário:** "repetir senha" agora é comparada e a senha mínima de 5 dígitos (que só
   existia no navegador) também vale no servidor.
 - **Cadastro de vocabulário:** a validação das formas 2 e 3 tinha condições contraditórias; agora,

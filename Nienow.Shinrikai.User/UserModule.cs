@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,8 +72,19 @@ namespace Nienow.Shinrikai.User
         Task<TUser?> GetByLoginAsync(string login, CancellationToken ct = default);
         Task<TUser?> GetByEmailAsync(string email, CancellationToken ct = default);
         Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default);
-        Task SignUpAsync(TUser user, CancellationToken ct = default);
-        Task UpdateProfileAsync(int userId, TProfileUpdate profile, CancellationToken ct = default);
+        /// <summary>Grava o usuário com <paramref name="passwordHash"/> em USR_PASS (nunca a senha digitada).</summary>
+        Task SignUpAsync(TUser user, string passwordHash, CancellationToken ct = default);
+        /// <summary><paramref name="newPasswordHash"/> nulo mantém a senha atual.</summary>
+        Task UpdateProfileAsync(int userId, TProfileUpdate profile, string? newPasswordHash, CancellationToken ct = default);
+        /// <summary>
+        /// Troca USR_PASS só se ainda for <paramref name="expected"/>, para não sobrescrever uma senha
+        /// alterada no meio do caminho (login e migração podem rodar ao mesmo tempo).
+        /// </summary>
+        Task ReplacePasswordAsync(int userId, string expected, string passwordHash, CancellationToken ct = default);
+        /// <summary>Usuários cuja USR_PASS ainda está em texto puro (sem o prefixo do hash).</summary>
+        Task<IReadOnlyList<(int UserId, string Stored)>> GetPlainPasswordsAsync(CancellationToken ct = default);
+        /// <summary>Aumenta USR_PASS para caber o hash, se a coluna for menor (a base original usava VARCHAR(20)).</summary>
+        Task EnsurePasswordColumnAsync(CancellationToken ct = default);
         Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default);
         Task DeclareUnderstandingAsync(int userId, int notificationId, CancellationToken ct = default);
     }
@@ -104,7 +114,7 @@ namespace Nienow.Shinrikai.User
         public async Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default) =>
             await db.ScalarAsync("SELECT USR_PASS FROM USERS" + WhereLogin, ct, ("@LGN", login)) as string;
 
-        public Task SignUpAsync(TUser user, CancellationToken ct = default) =>
+        public Task SignUpAsync(TUser user, string passwordHash, CancellationToken ct = default) =>
             db.ExecuteAsync(
                 """
                 INSERT INTO USERS (
@@ -119,7 +129,7 @@ namespace Nienow.Shinrikai.User
                 ("@USR", user.Name),
                 ("@EML", user.Email),
                 ("@LGN", user.Login),
-                ("@PSS", user.Password),
+                ("@PSS", passwordHash),
                 ("@SEX", user.Sex == ESex.Male ? "M" : "F"),
                 ("@DAT", user.Birthday),
                 ("@JOB", user.Profession),
@@ -127,7 +137,7 @@ namespace Nienow.Shinrikai.User
                 ("@JLPT", user.JLPT == EJLPT.None ? null : user.JLPT.ToString()));
 
         /// <summary>Não altera USR_LOGIN nem USR_TYPE; USR_PASS só entra no UPDATE quando há senha nova.</summary>
-        public Task UpdateProfileAsync(int userId, TProfileUpdate profile, CancellationToken ct = default)
+        public Task UpdateProfileAsync(int userId, TProfileUpdate profile, string? newPasswordHash, CancellationToken ct = default)
         {
             var parameters = new List<(string Name, object? Value)>
             {
@@ -140,17 +150,44 @@ namespace Nienow.Shinrikai.User
                 ("@JLPT", profile.JLPT == EJLPT.None ? null : profile.JLPT.ToString()),
                 ("@ID", userId),
             };
-            if (profile.ChangesPassword)
-                parameters.Add(("@PSS", profile.NewPassword));
+            if (newPasswordHash is not null)
+                parameters.Add(("@PSS", newPasswordHash));
 
             return db.ExecuteAsync(
                 $"""
                 UPDATE USERS SET
                   USR_NAME = @USR, USR_EMAIL = @EML, USR_SEX = @SEX, USR_BIRTHDAY = @DAT,
-                  USR_PROFISSION = @JOB, USR_OTHERLANGUAGES = @LNG, USR_JLPT = @JLPT{(profile.ChangesPassword ? ", USR_PASS = @PSS" : "")}
+                  USR_PROFISSION = @JOB, USR_OTHERLANGUAGES = @LNG, USR_JLPT = @JLPT{(newPasswordHash is not null ? ", USR_PASS = @PSS" : "")}
                 WHERE USRID = @ID
                 """,
                 ct, [.. parameters]);
+        }
+
+        public Task ReplacePasswordAsync(int userId, string expected, string passwordHash, CancellationToken ct = default) =>
+            db.ExecuteAsync(
+                "UPDATE USERS SET USR_PASS = @NEW WHERE USRID = @ID AND USR_PASS = @OLD",
+                ct, ("@NEW", passwordHash), ("@ID", userId), ("@OLD", expected));
+
+        public Task<IReadOnlyList<(int UserId, string Stored)>> GetPlainPasswordsAsync(CancellationToken ct = default) =>
+            db.QueryAsync(
+                "SELECT USRID, USR_PASS FROM USERS WHERE USR_PASS NOT STARTING WITH @PFX",
+                r => (r.GetInt("USRID"), r.GetNullableString("USR_PASS") ?? ""),
+                ct, ("@PFX", PasswordHasher.Prefix));
+
+        public async Task EnsurePasswordColumnAsync(CancellationToken ct = default)
+        {
+            var length = await db.ScalarAsync(
+                """
+                SELECT F.RDB$CHARACTER_LENGTH
+                FROM RDB$RELATION_FIELDS RF
+                  JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = RF.RDB$FIELD_SOURCE
+                WHERE RF.RDB$RELATION_NAME = 'USERS' AND RF.RDB$FIELD_NAME = 'USR_PASS'
+                """, ct);
+            if (length is not null && Convert.ToInt32(length) >= PasswordHasher.ColumnLength)
+                return;
+
+            // DDL não aceita parâmetro; o tamanho é uma constante do código.
+            await db.ExecuteAsync($"ALTER TABLE USERS ALTER COLUMN USR_PASS TYPE VARCHAR({PasswordHasher.ColumnLength})", ct);
         }
 
         public async Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default) =>
@@ -196,9 +233,10 @@ namespace Nienow.Shinrikai.User
         public Task<TUser?> GetUserAsync(string login, CancellationToken ct = default) => repository.GetByLoginAsync(login, ct);
 
         /// <summary>
-        /// O original comparava a senha dentro do SQL (concatenada — SQL injection no login).
-        /// Aqui a senha é lida por login parametrizado e comparada em tempo constante.
-        /// A base legada guarda a senha em texto puro; ver README (hash requer ALTER TABLE).
+        /// O original comparava a senha dentro do SQL (concatenada — SQL injection no login) e a guardava
+        /// em texto puro. Aqui a senha é lida por login parametrizado e conferida com PBKDF2
+        /// (<see cref="PasswordHasher"/>). Uma senha ainda em texto puro (base antiga) é aceita e trocada
+        /// pelo hash no mesmo login; a <c>PasswordMigration</c> da API faz o mesmo com todas ao iniciar.
         /// </summary>
         public async Task<TUser?> LoginAsync(string login, string password, CancellationToken ct = default)
         {
@@ -206,11 +244,32 @@ namespace Nienow.Shinrikai.User
                 return null;
 
             var stored = await repository.GetStoredPasswordAsync(login, ct);
-            var ok = stored is not null && CryptographicOperations.FixedTimeEquals(
-                Encoding.UTF8.GetBytes(stored.TrimEnd()),
-                Encoding.UTF8.GetBytes(password));
+            if (!PasswordHasher.Verify(password, stored, out var needsRehash))
+                return null;
 
-            return ok ? await repository.GetByLoginAsync(login, ct) : null;
+            var user = await repository.GetByLoginAsync(login, ct);
+            if (user is not null && needsRehash)
+                await repository.ReplacePasswordAsync(user.ID, stored!, PasswordHasher.Hash(password), ct);
+            return user;
+        }
+
+        /// <summary>
+        /// Troca por hash toda senha ainda em texto puro. Idempotente: roda a cada início da API e só
+        /// encontra trabalho na primeira vez (ou se algum script gravar senha em texto puro).
+        /// </summary>
+        public async Task<int> HashPlainPasswordsAsync(CancellationToken ct = default)
+        {
+            await repository.EnsurePasswordColumnAsync(ct);
+
+            var plain = await repository.GetPlainPasswordsAsync(ct);
+            foreach (var (userId, stored) in plain)
+            {
+                // Senha vazia não autentica (LoginAsync recusa); grava hash de valor aleatório para não deixar texto puro.
+                var password = stored.TrimEnd();
+                var hash = PasswordHasher.Hash(password.Length > 0 ? password : Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)));
+                await repository.ReplacePasswordAsync(userId, stored, hash, ct);
+            }
+            return plain.Count;
         }
 
         public async Task<Response> CheckAvailabilityAsync(string login, string? email, CancellationToken ct = default)
@@ -282,7 +341,8 @@ namespace Nienow.Shinrikai.User
             if (profile.ChangesPassword && await LoginAsync(login, profile.CurrentPassword!, ct) is null)
                 return Response.Fail("Senha atual incorreta.");
 
-            await repository.UpdateProfileAsync(user.ID, profile, ct);
+            var newHash = profile.ChangesPassword ? PasswordHasher.Hash(profile.NewPassword!) : null;
+            await repository.UpdateProfileAsync(user.ID, profile, newHash, ct);
             return Response.Ok("Dados alterados com sucesso!");
         }
 
@@ -296,7 +356,7 @@ namespace Nienow.Shinrikai.User
             if (!availability.OK)
                 return availability;
 
-            await repository.SignUpAsync(user, ct);
+            await repository.SignUpAsync(user, PasswordHasher.Hash(user.Password!), ct);
             return Response.Ok("Usuário cadastrado com sucesso!");
         }
     }

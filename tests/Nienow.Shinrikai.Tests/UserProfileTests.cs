@@ -48,9 +48,10 @@ namespace Nienow.Shinrikai.Tests
             var response = await new UserService(repo).UpdateProfileAsync("ana", Valid());
 
             Assert.True(response.OK);
-            var (id, saved) = Assert.Single(repo.Updates);
+            var (id, saved, hash) = Assert.Single(repo.Updates);
             Assert.Equal(1, id);
             Assert.False(saved.ChangesPassword);
+            Assert.Null(hash);
         }
 
         [Fact]
@@ -83,8 +84,54 @@ namespace Nienow.Shinrikai.Tests
 
             Assert.Equal(ok, (await new UserService(repo).UpdateProfileAsync("ana", profile)).OK);
             Assert.Equal(ok ? 1 : 0, repo.Updates.Count);
+            if (ok)
+                Assert.True(PasswordHasher.Verify("nova123", repo.Updates[0].Hash, out _));
         }
 
+        [Fact]
+        public async Task Login_with_plain_password_replaces_it_with_a_hash()
+        {
+            var repo = new FakeUsers();
+            var service = new UserService(repo);
+
+            Assert.Null(await service.LoginAsync("ana", "errada"));
+            Assert.Equal("senha1", repo.Password(1));
+
+            Assert.NotNull(await service.LoginAsync("ana", "senha1"));
+            Assert.True(PasswordHasher.IsHash(repo.Password(1)));
+            Assert.NotNull(await service.LoginAsync("ana", "senha1"));
+            Assert.Null(await service.LoginAsync("ana", "errada"));
+        }
+
+        [Fact]
+        public async Task Sign_up_stores_only_the_hash()
+        {
+            var repo = new FakeUsers();
+            var user = new TUser { Name = "Caio", Email = "caio@b.com", Login = "caio", Password = "segredo", RepeatPassword = "segredo" };
+
+            Assert.True((await new UserService(repo).SignUpAsync(user)).OK);
+            var stored = repo.Password(3);
+            Assert.True(PasswordHasher.IsHash(stored));
+            Assert.DoesNotContain("segredo", stored);
+            Assert.NotNull(await new UserService(repo).LoginAsync("caio", "segredo"));
+        }
+
+        [Fact]
+        public async Task Migration_hashes_every_plain_password_once()
+        {
+            var repo = new FakeUsers();
+            var service = new UserService(repo);
+
+            Assert.Equal(2, await service.HashPlainPasswordsAsync());
+            Assert.True(repo.ColumnEnsured);
+            Assert.True(PasswordHasher.IsHash(repo.Password(1)));
+            Assert.True(PasswordHasher.IsHash(repo.Password(2)));
+            Assert.NotNull(await service.LoginAsync("bia", "senha2"));
+
+            Assert.Equal(0, await service.HashPlainPasswordsAsync());
+        }
+
+        /// <summary>Usuários em memória; as senhas começam em texto puro, como na base original.</summary>
         private sealed class FakeUsers : IUserRepository
         {
             private readonly List<(TUser User, string Password)> users =
@@ -93,7 +140,10 @@ namespace Nienow.Shinrikai.Tests
                 (new TUser { ID = 2, Login = "bia", Name = "Bia", Email = "bia@b.com" }, "senha2"),
             ];
 
-            public List<(int Id, TProfileUpdate Profile)> Updates { get; } = [];
+            public List<(int Id, TProfileUpdate Profile, string? Hash)> Updates { get; } = [];
+            public bool ColumnEnsured { get; private set; }
+
+            public string Password(int id) => users.Single(u => u.User.ID == id).Password;
 
             public Task<TUser?> GetByLoginAsync(string login, CancellationToken ct = default) =>
                 Task.FromResult(users.Select(u => u.User).FirstOrDefault(u => u.Login == login));
@@ -104,13 +154,36 @@ namespace Nienow.Shinrikai.Tests
             public Task<string?> GetStoredPasswordAsync(string login, CancellationToken ct = default) =>
                 Task.FromResult<string?>(users.FirstOrDefault(u => u.User.Login == login).Password);
 
-            public Task UpdateProfileAsync(int userId, TProfileUpdate profile, CancellationToken ct = default)
+            public Task UpdateProfileAsync(int userId, TProfileUpdate profile, string? newPasswordHash, CancellationToken ct = default)
             {
-                Updates.Add((userId, profile));
+                Updates.Add((userId, profile, newPasswordHash));
                 return Task.CompletedTask;
             }
 
-            public Task SignUpAsync(TUser user, CancellationToken ct = default) => Task.CompletedTask;
+            public Task SignUpAsync(TUser user, string passwordHash, CancellationToken ct = default)
+            {
+                user.ID = users.Max(u => u.User.ID) + 1;
+                users.Add((user, passwordHash));
+                return Task.CompletedTask;
+            }
+
+            public Task ReplacePasswordAsync(int userId, string expected, string passwordHash, CancellationToken ct = default)
+            {
+                var i = users.FindIndex(u => u.User.ID == userId && u.Password == expected);
+                if (i >= 0)
+                    users[i] = (users[i].User, passwordHash);
+                return Task.CompletedTask;
+            }
+
+            public Task<IReadOnlyList<(int UserId, string Stored)>> GetPlainPasswordsAsync(CancellationToken ct = default) =>
+                Task.FromResult<IReadOnlyList<(int UserId, string Stored)>>(
+                    [.. users.Where(u => !PasswordHasher.IsHash(u.Password)).Select(u => (u.User.ID, u.Password))]);
+
+            public Task EnsurePasswordColumnAsync(CancellationToken ct = default)
+            {
+                ColumnEnsured = true;
+                return Task.CompletedTask;
+            }
 
             public Task<string> GetNotificationAsync(int userId, int notificationId, bool force, CancellationToken ct = default) => Task.FromResult("");
 

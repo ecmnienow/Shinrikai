@@ -36,7 +36,7 @@ CREATE TABLE USERS (
   USR_NAME            VARCHAR(150) NOT NULL,
   USR_EMAIL           VARCHAR(150),
   USR_LOGIN           VARCHAR(60) NOT NULL,
-  USR_PASS            VARCHAR(100) NOT NULL,      -- texto puro, como no original (ver README)
+  USR_PASS            VARCHAR(100) NOT NULL,      -- hash PBKDF2 (PasswordHasher); o original guardava texto puro
   USR_SEX             CHAR(1),                    -- 'M' / 'F'
   USR_BIRTHDAY        TIMESTAMP,
   USR_PROFISSION      VARCHAR(150),               -- (sic) nome do original
